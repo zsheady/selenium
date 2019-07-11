@@ -1,9 +1,9 @@
-﻿// <copyright file="ICommandExecutor.cs" company="WebDriver Committers">
-// Copyright 2007-2011 WebDriver committers
-// Copyright 2007-2011 Google Inc.
-// Portions copyright 2011 Software Freedom Conservancy
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
+// <copyright file="ICommandExecutor.cs" company="WebDriver Committers">
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -16,13 +16,20 @@
 // limitations under the License.
 // </copyright>
 
+using System;
+
 namespace OpenQA.Selenium.Remote
 {
     /// <summary>
     /// Provides a way to send commands to the remote server
     /// </summary>
-    public interface ICommandExecutor
+    public interface ICommandExecutor : IDisposable
     {
+        /// <summary>
+        /// Gets the repository of objects containin information about commands.
+        /// </summary>
+        CommandInfoRepository CommandInfoRepository { get; }
+
         /// <summary>
         /// Executes a command
         /// </summary>

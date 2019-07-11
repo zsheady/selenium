@@ -1,36 +1,30 @@
-/*
-Copyright 2012 Selenium committers
-Copyright 2012 Software Freedom Conservancy
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.safari;
 
-import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableMap;
 
-import org.json.JSONException;
+import org.openqa.selenium.Beta;
 import org.openqa.selenium.Capabilities;
-import org.openqa.selenium.OutputType;
-import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriverException;
-import org.openqa.selenium.remote.DesiredCapabilities;
-import org.openqa.selenium.remote.DriverCommand;
 import org.openqa.selenium.remote.FileDetector;
 import org.openqa.selenium.remote.RemoteWebDriver;
-
-import java.io.File;
-import java.io.IOException;
+import org.openqa.selenium.remote.Response;
 
 /**
  * A WebDriver implementation that controls Safari using a browser extension
@@ -38,7 +32,7 @@ import java.io.IOException;
  *
  * This driver can be configured using the {@link SafariOptions} class.
  */
-public class SafariDriver extends RemoteWebDriver implements TakesScreenshot {
+public class SafariDriver extends RemoteWebDriver {
 
   /**
    * Initializes a new SafariDriver} class with default {@link SafariOptions}.
@@ -48,19 +42,43 @@ public class SafariDriver extends RemoteWebDriver implements TakesScreenshot {
   }
 
   /**
-   * Converts the specified {@link DesiredCapabilities} to a {@link SafariOptions}
+   * Converts the specified {@link Capabilities} to a {@link SafariOptions}
    * instance and initializes a new SafariDriver using these options.
-   * @see SafariOptions#fromCapabilities(org.openqa.selenium.Capabilities)
+   * @see SafariOptions#fromCapabilities(Capabilities)
+   *
+   * @param desiredCapabilities capabilities requested of the driver
+   * @deprecated Use {@link SafariDriver(SafariOptions)} instead.
    */
+  @Deprecated
   public SafariDriver(Capabilities desiredCapabilities) {
     this(SafariOptions.fromCapabilities(desiredCapabilities));
   }
 
   /**
    * Initializes a new SafariDriver using the specified {@link SafariOptions}.
+   *
+   * @param safariOptions safari specific options / capabilities for the driver
    */
   public SafariDriver(SafariOptions safariOptions) {
-    super(new SafariDriverCommandExecutor(safariOptions), safariOptions.toCapabilities());
+    this(SafariDriverService.createDefaultService(safariOptions), safariOptions);
+  }
+
+  /**
+   * Initializes a new SafariDriver backed by the specified {@link SafariDriverService}.
+   *
+   * @param safariService preconfigured safari service
+   */
+  public SafariDriver(SafariDriverService safariService) {
+    this(safariService, new SafariOptions());
+  }
+
+  /**
+   * Initializes a new SafariDriver using the specified {@link SafariOptions}.
+   *
+   * @param safariOptions safari specific options / capabilities for the driver
+   */
+  public SafariDriver(SafariDriverService safariServer, SafariOptions safariOptions) {
+    super(new SafariDriverCommandExecutor(safariServer), safariOptions);
   }
 
   @Override
@@ -70,27 +88,23 @@ public class SafariDriver extends RemoteWebDriver implements TakesScreenshot {
         "via RemoteWebDriver");
   }
 
-  @Override
-  protected void startClient() {
-    SafariDriverCommandExecutor executor = (SafariDriverCommandExecutor) this.getCommandExecutor();
-    try {
-      executor.start();
-    } catch (IOException e) {
-      throw new WebDriverException(e);
-    }
+  /**
+   * Open either a new tab or window, depending on what is requested, and return the window handle
+   * without switching to it.
+   *
+   * @return The handle of the new window.
+   */
+  @Beta
+  public String newWindow(WindowType type) {
+    Response response = execute(
+        "SAFARI_NEW_WINDOW",
+        ImmutableMap.of("newTab", type == WindowType.TAB));
+
+    return (String) response.getValue();
   }
 
-  @Override
-  protected void stopClient() {
-    SafariDriverCommandExecutor executor = (SafariDriverCommandExecutor) this.getCommandExecutor();
-    executor.stop();
-  }
-
-  @Override
-  public <X> X getScreenshotAs(OutputType<X> target) throws WebDriverException {
-    // Get the screenshot as base64.
-    String base64 = (String) execute(DriverCommand.SCREENSHOT).getValue();
-    // ... and convert it.
-    return target.convertFromBase64Png(base64);
+  public enum WindowType {
+    TAB,
+    WINDOW,
   }
 }

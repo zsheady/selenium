@@ -48,15 +48,16 @@ goog.net.WebChannelTransport = function() {};
 
 
 /**
- * The latest protocol version. The protocol version is requested
- * from the server which is responsible for terminating the underlying
- * wire protocols.
+ * The client version. This integer value will be passed to the server
+ * when a channel is opened to inform the server the client "capabilities".
+ *
+ * Wire protocol version is a different concept and is internal to the
+ * transport implementation.
  *
  * @const
  * @type {number}
- * @private
  */
-goog.net.WebChannelTransport.LATEST_VERSION_ = 0;
+goog.net.WebChannelTransport.CLIENT_VERSION = 20;
 
 
 /**
@@ -68,7 +69,8 @@ goog.net.WebChannelTransport.LATEST_VERSION_ = 0;
  *
  * @param {string} url The URL path for the new WebChannel instance.
  * @param {!goog.net.WebChannel.Options=} opt_options Configuration for the
- *     new WebChannel instance.
+ *     new WebChannel instance. The configuration object is reusable after
+ *     the new channel instance is created.
  * @return {!goog.net.WebChannel} the newly created WebChannel instance.
  */
 goog.net.WebChannelTransport.prototype.createWebChannel = goog.abstractMethod;

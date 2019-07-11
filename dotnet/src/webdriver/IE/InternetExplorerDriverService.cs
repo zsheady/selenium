@@ -1,9 +1,9 @@
-﻿// <copyright file="InternetExplorerDriverService.cs" company="WebDriver Committers">
-// Copyright 2007-2011 WebDriver committers
-// Copyright 2007-2011 Google Inc.
-// Portions copyright 2011 Software Freedom Conservancy
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
+// <copyright file="InternetExplorerDriverService.cs" company="WebDriver Committers">
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -17,9 +17,7 @@
 // </copyright>
 
 using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Text;
 using OpenQA.Selenium.Internal;
 
@@ -31,15 +29,16 @@ namespace OpenQA.Selenium.IE
     public sealed class InternetExplorerDriverService : DriverService
     {
         private const string InternetExplorerDriverServiceFileName = "IEDriverServer.exe";
-        private static readonly Uri InternetExplorerDriverDownloadUrl = new Uri("http://code.google.com/p/selenium/downloads/list");
+        private static readonly Uri InternetExplorerDriverDownloadUrl = new Uri("http://selenium-release.storage.googleapis.com/index.html");
 
         private InternetExplorerDriverLogLevel loggingLevel = InternetExplorerDriverLogLevel.Fatal;
         private string host = string.Empty;
         private string logFile = string.Empty;
         private string libraryExtractionPath = string.Empty;
+        private string whitelistedIpAddresses = string.Empty;
 
         /// <summary>
-        /// Initializes a new instance of the InternetExplorerDriverService class.
+        /// Initializes a new instance of the <see cref="InternetExplorerDriverService"/> class.
         /// </summary>
         /// <param name="executablePath">The full path to the IEDriverServer executable.</param>
         /// <param name="executableFileName">The file name of the IEDriverServer executable.</param>
@@ -92,6 +91,17 @@ namespace OpenQA.Selenium.IE
         }
 
         /// <summary>
+        /// Gets or sets the comma-delimited list of IP addresses that are approved to
+        /// connect to this instance of the IEDriverServer. Defaults to an empty string,
+        /// which means only the local loopback address can connect.
+        /// </summary>
+        public string WhitelistedIPAddresses
+        {
+            get { return this.whitelistedIpAddresses; }
+            set { this.whitelistedIpAddresses = value; }
+        }
+
+        /// <summary>
         /// Gets the command-line arguments for the driver service.
         /// </summary>
         protected override string CommandLineArguments
@@ -106,17 +116,22 @@ namespace OpenQA.Selenium.IE
 
                 if (!string.IsNullOrEmpty(this.logFile))
                 {
-                    argsBuilder.Append(string.Format(CultureInfo.InvariantCulture, " -log-file={0}", this.logFile));
+                    argsBuilder.Append(string.Format(CultureInfo.InvariantCulture, " -log-file=\"{0}\"", this.logFile));
                 }
 
                 if (!string.IsNullOrEmpty(this.libraryExtractionPath))
                 {
-                    argsBuilder.Append(string.Format(CultureInfo.InvariantCulture, " -extract-path={0}", this.libraryExtractionPath));
+                    argsBuilder.Append(string.Format(CultureInfo.InvariantCulture, " -extract-path=\"{0}\"", this.libraryExtractionPath));
                 }
 
                 if (this.loggingLevel != InternetExplorerDriverLogLevel.Fatal)
                 {
                     argsBuilder.Append(string.Format(CultureInfo.InvariantCulture, " -log-level={0}", this.loggingLevel.ToString().ToUpperInvariant()));
+                }
+
+                if (!string.IsNullOrEmpty(this.whitelistedIpAddresses))
+                {
+                    argsBuilder.Append(string.Format(CultureInfo.InvariantCulture, " -whitelisted-ips={0}", this.whitelistedIpAddresses));
                 }
 
                 if (this.SuppressInitialDiagnosticInformation)

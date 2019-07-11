@@ -1,26 +1,24 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.support.pagefactory;
 
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.mockito.Matchers.any;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,26 +27,22 @@ import org.junit.Test;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.WrapsElement;
 import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.interactions.Coordinates;
 import org.openqa.selenium.interactions.HasInputDevices;
 import org.openqa.selenium.interactions.Mouse;
-import org.openqa.selenium.interactions.internal.Coordinates;
 import org.openqa.selenium.internal.FindsById;
 import org.openqa.selenium.internal.FindsByLinkText;
 import org.openqa.selenium.internal.FindsByName;
 import org.openqa.selenium.internal.FindsByXPath;
-import org.openqa.selenium.internal.Locatable;
-import org.openqa.selenium.internal.WrapsElement;
 import org.openqa.selenium.support.FindAll;
 import org.openqa.selenium.support.FindBy;
 import org.openqa.selenium.support.FindBys;
 import org.openqa.selenium.support.PageFactory;
 
-import java.lang.reflect.Field;
 import java.util.List;
 
-/**
- */
 public class DefaultFieldDecoratorTest {
 
   // Unusued fields are used by tests. Do not remove!
@@ -83,11 +77,7 @@ public class DefaultFieldDecoratorTest {
   private List<Object> list8;
 
   private FieldDecorator createDecoratorWithNullLocator() {
-    return new DefaultFieldDecorator(new ElementLocatorFactory() {
-      public ElementLocator createLocator(Field field) {
-        return null;
-      }
-    });
+    return new DefaultFieldDecorator(field -> null);
   }
 
   private FieldDecorator createDecoratorWithDefaultLocator() {
@@ -99,87 +89,72 @@ public class DefaultFieldDecoratorTest {
   public void decoratesWebElement() throws Exception {
     FieldDecorator decorator = createDecoratorWithDefaultLocator();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("element1")),
-        is(notNullValue()));
+                                  getClass().getDeclaredField("element1"))).isNotNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("element2")),
-        is(notNullValue()));
+                                  getClass().getDeclaredField("element2"))).isNotNull();
   }
 
   @Test
   public void decoratesAnnotatedWebElementList() throws Exception {
     FieldDecorator decorator = createDecoratorWithDefaultLocator();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list3")),
-        is(notNullValue()));
+                                  getClass().getDeclaredField("list3"))).isNotNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list4")),
-        is(notNullValue()));
+                                  getClass().getDeclaredField("list4"))).isNotNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list5")),
-        is(notNullValue()));
+                                  getClass().getDeclaredField("list5"))).isNotNull();
   }
 
   @Test
   public void doesNotDecorateNonAnnotatedWebElementList() throws Exception {
     FieldDecorator decorator = createDecoratorWithDefaultLocator();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list1")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list1"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list2")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list2"))).isNull();
   }
 
   @Test
   public void doesNotDecorateNonWebElement() throws Exception {
     FieldDecorator decorator = createDecoratorWithDefaultLocator();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("num")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("num"))).isNull();
   }
 
   @Test
   public void doesNotDecorateListOfSomethingElse() throws Exception {
     FieldDecorator decorator = createDecoratorWithDefaultLocator();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list6")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list6"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list7")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list7"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list8")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list8"))).isNull();
   }
 
   @Test
   public void doesNotDecorateNullLocator() throws Exception {
     FieldDecorator decorator = createDecoratorWithNullLocator();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("element1")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("element1"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("element2")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("element2"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list1")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list1"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("list2")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("list2"))).isNull();
     assertThat(decorator.decorate(getClass().getClassLoader(),
-        getClass().getDeclaredField("num")),
-        is(nullValue()));
+                                  getClass().getDeclaredField("num"))).isNull();
   }
 
   @Test
-  public void testDecoratingProxyImplementsRequiredInterfaces() throws Exception {
+  public void testDecoratingProxyImplementsRequiredInterfaces() {
     final AllDriver driver = mock(AllDriver.class);
     final AllElement element = mock(AllElement.class);
     final Mouse mouse = mock(Mouse.class);
 
     when(driver.getMouse()).thenReturn(mouse);
+    when(element.getCoordinates()).thenReturn(mock(Coordinates.class));
     when(driver.findElement(By.id("foo"))).thenReturn(element);
 
     Page page = new Page();
@@ -198,11 +173,12 @@ public class DefaultFieldDecoratorTest {
   }
 
   private interface AllDriver extends WebDriver, FindsById, FindsByLinkText, FindsByName,
-      FindsByXPath, HasInputDevices {
+                                      FindsByXPath, HasInputDevices {
     // Place holder
   }
 
-  private interface AllElement extends WebElement, WrapsElement, Locatable {
+  private interface AllElement extends WebElement, WrapsElement,
+                                       org.openqa.selenium.interactions.Locatable {
     // Place holder
   }
 }

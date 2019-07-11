@@ -1,31 +1,33 @@
-/*
-Copyright 2007-2010 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.remote.internal;
 
 import com.google.common.base.Function;
 import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 
-import org.openqa.selenium.internal.WrapsElement;
+import org.openqa.selenium.WrapsElement;
+import org.openqa.selenium.remote.Dialect;
 import org.openqa.selenium.remote.RemoteWebElement;
 
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -34,10 +36,11 @@ import java.util.Map;
  * the WebDriver wire protocol. This class will recursively convert Lists and
  * Maps to catch nested references.
  *
- * @see <a href="http://code.google.com/p/selenium/wiki/JsonWireProtocol#WebElement_JSON_Object">
+ * @see <a href="https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#webelement-json-object">
  *     WebDriver JSON Wire Protocol</a>
  */
 public class WebElementToJsonConverter implements Function<Object, Object> {
+  @Override
   public Object apply(Object arg) {
     if (arg == null || arg instanceof String || arg instanceof Boolean ||
         arg instanceof Number) {
@@ -49,11 +52,13 @@ public class WebElementToJsonConverter implements Function<Object, Object> {
     }
 
     if (arg instanceof RemoteWebElement) {
-      return ImmutableMap.of("ELEMENT", ((RemoteWebElement) arg).getId());
+      return ImmutableMap.of(
+        Dialect.OSS.getEncodedElementKey(), ((RemoteWebElement) arg).getId(),
+        Dialect.W3C.getEncodedElementKey(), ((RemoteWebElement) arg).getId());
     }
 
     if (arg.getClass().isArray()) {
-      arg = Lists.newArrayList((Object[]) arg);
+      arg = Arrays.asList((Object[]) arg);
     }
 
     if (arg instanceof Collection<?>) {
@@ -63,7 +68,7 @@ public class WebElementToJsonConverter implements Function<Object, Object> {
 
     if (arg instanceof Map<?, ?>) {
       Map<?, ?> args = (Map<?, ?>) arg;
-      Map<String, Object> converted = Maps.newHashMapWithExpectedSize(args.size());
+      Map<String, Object> converted = new HashMap<>(args.size());
       for (Map.Entry<?, ?> entry : args.entrySet()) {
         Object key = entry.getKey();
         if (!(key instanceof String)) {
@@ -75,7 +80,7 @@ public class WebElementToJsonConverter implements Function<Object, Object> {
       return converted;
     }
 
-    throw new IllegalArgumentException("Argument is of an illegal type: "
-        + arg.getClass().getName());
+    throw new IllegalArgumentException("Argument is of an illegal type: " +
+        arg.getClass().getName());
   }
 }

@@ -1,9 +1,8 @@
 using System;
-using System.Collections.Generic;
-using System.Text;
 using NUnit.Framework;
 using System.Drawing;
 using OpenQA.Selenium.Environment;
+using System.Collections.ObjectModel;
 
 namespace OpenQA.Selenium
 {
@@ -11,19 +10,17 @@ namespace OpenQA.Selenium
     public class VisibilityTest : DriverTestFixture
     {
         [Test]
-        [Category("Javascript")]
         public void ShouldAllowTheUserToTellIfAnElementIsDisplayedOrNot()
         {
             driver.Url = javascriptPage;
 
-            Assert.IsTrue(driver.FindElement(By.Id("displayed")).Displayed);
-            Assert.IsFalse(driver.FindElement(By.Id("none")).Displayed);
-            Assert.IsFalse(driver.FindElement(By.Id("suppressedParagraph")).Displayed);
-            Assert.IsFalse(driver.FindElement(By.Id("hidden")).Displayed);
+            Assert.That(driver.FindElement(By.Id("displayed")).Displayed, Is.True, "Element with ID 'displayed' should be displayed");
+            Assert.That(driver.FindElement(By.Id("none")).Displayed, Is.False, "Element with ID 'none' should not be displayed");
+            Assert.That(driver.FindElement(By.Id("suppressedParagraph")).Displayed, Is.False, "Element with ID 'suppressedParagraph' should not be displayed");
+            Assert.That(driver.FindElement(By.Id("hidden")).Displayed, Is.False, "Element with ID 'hidden' should not be displayed");
         }
 
         [Test]
-        [Category("Javascript")]
         public void VisibilityShouldTakeIntoAccountParentVisibility()
         {
             driver.Url = javascriptPage;
@@ -31,82 +28,63 @@ namespace OpenQA.Selenium
             IWebElement childDiv = driver.FindElement(By.Id("hiddenchild"));
             IWebElement hiddenLink = driver.FindElement(By.Id("hiddenlink"));
 
-            Assert.IsFalse(childDiv.Displayed);
-            Assert.IsFalse(hiddenLink.Displayed);
+            Assert.That(childDiv.Displayed, Is.False, "Child div should not be displayed");
+            Assert.That(hiddenLink.Displayed, Is.False, "Hidden link should not be displayed");
         }
 
         [Test]
-        [Category("Javascript")]
         public void ShouldCountElementsAsVisibleIfStylePropertyHasBeenSet()
         {
             driver.Url = javascriptPage;
 
             IWebElement shown = driver.FindElement(By.Id("visibleSubElement"));
 
-            Assert.IsTrue(shown.Displayed);
+            Assert.That(shown.Displayed, Is.True);
         }
 
         [Test]
-        [Category("Javascript")]
         public void ShouldModifyTheVisibilityOfAnElementDynamically()
         {
             driver.Url = javascriptPage;
 
             IWebElement element = driver.FindElement(By.Id("hideMe"));
 
-            Assert.IsTrue(element.Displayed);
+            Assert.That(element.Displayed, Is.True);
 
             element.Click();
 
-            Assert.IsFalse(element.Displayed);
+            Assert.That(element.Displayed, Is.False);
         }
 
         [Test]
-        [Category("Javascript")]
         public void HiddenInputElementsAreNeverVisible()
         {
             driver.Url = javascriptPage;
 
             IWebElement shown = driver.FindElement(By.Name("hidden"));
 
-            Assert.IsFalse(shown.Displayed);
+            Assert.That(shown.Displayed, Is.False);
         }
 
         [Test]
-        [Category("Javascript")]
-        [ExpectedException(typeof(ElementNotVisibleException))]
         public void ShouldNotBeAbleToClickOnAnElementThatIsNotDisplayed()
         {
             driver.Url = javascriptPage;
             IWebElement element = driver.FindElement(By.Id("unclickable"));
-            element.Click();
+            Assert.That(() => element.Click(), Throws.InstanceOf<ElementNotInteractableException>());
         }
 
         [Test]
-        [Category("Javascript")]
-        [ExpectedException(typeof(ElementNotVisibleException))]
         public void ShouldNotBeAbleToTypeAnElementThatIsNotDisplayed()
         {
             driver.Url = javascriptPage;
             IWebElement element = driver.FindElement(By.Id("unclickable"));
-            element.SendKeys("You don't see me");
+            Assert.That(() => element.SendKeys("You don't see me"), Throws.InstanceOf<ElementNotInteractableException>());
 
-            Assert.AreNotEqual(element.GetAttribute("value"), "You don't see me");
+            Assert.That(element.GetAttribute("value"), Is.Not.EqualTo("You don't see me"));
         }
 
         [Test]
-        [Category("Javascript")]
-        [ExpectedException(typeof(ElementNotVisibleException))]
-        public void ShouldNotBeAbleToSelectAnElementThatIsNotDisplayed()
-        {
-            driver.Url = javascriptPage;
-            IWebElement element = driver.FindElement(By.Id("untogglable"));
-            element.Click();
-        }
-
-        [Test]
-        [Category("Javascript")]
-        //[IgnoreBrowser(Browser.IE, "Div with size 0 is not interpreted as displayed even if descendent has size")]
         public void ZeroSizedDivIsShownIfDescendantHasSize()
         {
             driver.Url = javascriptPage;
@@ -116,7 +94,7 @@ namespace OpenQA.Selenium
 
             Assert.AreEqual(0, size.Width, "Should have 0 width");
             Assert.AreEqual(0, size.Height, "Should have 0 height");
-            Assert.IsTrue(element.Displayed);
+            Assert.That(element.Displayed, Is.True);
         }
 
         [Test]
@@ -126,15 +104,11 @@ namespace OpenQA.Selenium
             driver.Url = url;
 
             IWebElement element = driver.FindElement(By.Id("suggest"));
-            Assert.IsTrue(element.Displayed);
+            Assert.That(element.Displayed, Is.True);
         }
 
         [Test]
-        [IgnoreBrowser(Browser.Chrome)]
-        [IgnoreBrowser(Browser.HtmlUnit)]
         [IgnoreBrowser(Browser.Opera)]
-        [IgnoreBrowser(Browser.PhantomJS)]
-        [IgnoreBrowser(Browser.Safari)]
         public void ElementHiddenByOverflowXIsNotVisible()
         {
             string[] pages = new string[]{
@@ -146,17 +120,14 @@ namespace OpenQA.Selenium
             {
                 driver.Url = EnvironmentManager.Instance.UrlBuilder.WhereIs(page);
                 IWebElement right = driver.FindElement(By.Id("right"));
-                Assert.IsFalse(right.Displayed, "Failed for " + page);
+                Assert.That(right.Displayed, Is.False, "Failed for " + page);
                 IWebElement bottomRight = driver.FindElement(By.Id("bottom-right"));
-                Assert.IsFalse(bottomRight.Displayed, "Failed for " + page);
+                Assert.That(bottomRight.Displayed, Is.False, "Failed for " + page);
             }
         }
 
         [Test]
-        [IgnoreBrowser(Browser.Chrome)]
-        [IgnoreBrowser(Browser.HtmlUnit)]
         [IgnoreBrowser(Browser.Opera)]
-        [IgnoreBrowser(Browser.PhantomJS)]
         public void ElementHiddenByOverflowYIsNotVisible()
         {
             string[] pages = new string[]{
@@ -168,9 +139,9 @@ namespace OpenQA.Selenium
             {
                 driver.Url = EnvironmentManager.Instance.UrlBuilder.WhereIs(page);
                 IWebElement bottom = driver.FindElement(By.Id("bottom"));
-                Assert.IsFalse(bottom.Displayed, "Failed for " + page);
+                Assert.That(bottom.Displayed, Is.False, "Failed for " + page);
                 IWebElement bottomRight = driver.FindElement(By.Id("bottom-right"));
-                Assert.IsFalse(bottomRight.Displayed, "Failed for " + page);
+                Assert.That(bottomRight.Displayed, Is.False, "Failed for " + page);
             }
         }
 
@@ -189,12 +160,11 @@ namespace OpenQA.Selenium
             {
                 driver.Url = EnvironmentManager.Instance.UrlBuilder.WhereIs(page);
                 IWebElement right = driver.FindElement(By.Id("right"));
-                Assert.IsTrue(right.Displayed, "Failed for " + page);
+                Assert.That(right.Displayed, Is.True, "Failed for " + page);
             }
         }
 
         [Test]
-        [IgnoreBrowser(Browser.Safari)]
         public void ElementScrollableByOverflowYIsVisible()
         {
             string[] pages = new string[]{
@@ -209,7 +179,7 @@ namespace OpenQA.Selenium
             {
                 driver.Url = EnvironmentManager.Instance.UrlBuilder.WhereIs(page);
                 IWebElement bottom = driver.FindElement(By.Id("bottom"));
-                Assert.IsTrue(bottom.Displayed, "Failed for " + page);
+                Assert.That(bottom.Displayed, Is.True, "Failed for " + page);
             }
         }
 
@@ -226,15 +196,13 @@ namespace OpenQA.Selenium
             {
                 driver.Url = EnvironmentManager.Instance.UrlBuilder.WhereIs(page);
                 IWebElement bottomRight = driver.FindElement(By.Id("bottom-right"));
-                Assert.IsTrue(bottomRight.Displayed, "Failed for " + page);
+                Assert.That(bottomRight.Displayed, Is.True, "Failed for " + page);
             }
         }
 
         [Test]
-        [IgnoreBrowser(Browser.Android)]
-        [IgnoreBrowser(Browser.IPhone)]
         [IgnoreBrowser(Browser.Opera)]
-        public void tooSmallAWindowWithOverflowHiddenIsNotAProblem()
+        public void TooSmallAWindowWithOverflowHiddenIsNotAProblem()
         {
             IWindow window = driver.Manage().Window;
             Size originalSize = window.Size;
@@ -247,7 +215,7 @@ namespace OpenQA.Selenium
                 driver.Url = EnvironmentManager.Instance.UrlBuilder.WhereIs("overflow-body.html");
 
                 IWebElement element = driver.FindElement(By.Name("resultsFrame"));
-                Assert.IsTrue(element.Displayed);
+                Assert.That(element.Displayed, Is.True);
             }
             finally
             {
@@ -256,7 +224,62 @@ namespace OpenQA.Selenium
         }
 
         [Test]
-        [Category("Javascript")]
+        [IgnoreBrowser(Browser.IE, "IE does not support the hidden attribute")]
+        public void ShouldShowElementNotVisibleWithHiddenAttribute()
+        {
+            string url = EnvironmentManager.Instance.UrlBuilder.WhereIs("hidden.html");
+            driver.Url = url;
+            IWebElement element = driver.FindElement(By.Id("singleHidden"));
+            Assert.That(element.Displayed, Is.False);
+        }
+
+        [Test]
+        [IgnoreBrowser(Browser.IE, "IE does not support the hidden attribute")]
+        public void ShouldShowElementNotVisibleWhenParentElementHasHiddenAttribute()
+        {
+            string url = EnvironmentManager.Instance.UrlBuilder.WhereIs("hidden.html");
+            driver.Url = url;
+
+            IWebElement element = driver.FindElement(By.Id("child"));
+            Assert.That(element.Displayed, Is.False);
+        }
+
+        [Test]
+        public void ShouldBeAbleToClickOnElementsWithOpacityZero()
+        {
+            if (TestUtilities.IsOldIE(driver))
+            {
+                return;
+            }
+
+            driver.Url = clickJackerPage;
+            IWebElement element = driver.FindElement(By.Id("clickJacker"));
+            Assert.AreEqual("0", element.GetCssValue("opacity"), "Precondition failed: clickJacker should be transparent");
+            element.Click();
+            Assert.AreEqual("1", element.GetCssValue("opacity"));
+        }
+
+        [Test]
+        [IgnoreBrowser(Browser.Opera)]
+        public void ShouldBeAbleToSelectOptionsFromAnInvisibleSelect()
+        {
+            driver.Url = formsPage;
+
+            IWebElement select = driver.FindElement(By.Id("invisi_select"));
+
+            ReadOnlyCollection<IWebElement> options = select.FindElements(By.TagName("option"));
+            IWebElement apples = options[0];
+            IWebElement oranges = options[1];
+
+            Assert.That(apples.Selected, Is.True, "Apples should be selected");
+            Assert.That(oranges.Selected, Is.False, "Oranges shoudl be selected");
+
+            oranges.Click();
+            Assert.That(apples.Selected, Is.False, "Apples should not be selected");
+            Assert.That(oranges.Selected, Is.True, "Oranges should be selected");
+        }
+
+        [Test]
         public void CorrectlyDetectMapElementsAreShown()
         {
             driver.Url = mapVisibilityPage;
@@ -264,7 +287,26 @@ namespace OpenQA.Selenium
             IWebElement area = driver.FindElement(By.Id("mtgt_unnamed_0"));
 
             bool isShown = area.Displayed;
-            Assert.IsTrue(isShown, "The element and the enclosing map should be considered shown.");
+            Assert.That(isShown, Is.True, "The element and the enclosing map should be considered shown.");
+        }
+
+        //------------------------------------------------------------------
+        // Tests below here are not included in the Java test suite
+        //------------------------------------------------------------------
+        [Test]
+        public void ShouldNotBeAbleToSelectAnElementThatIsNotDisplayed()
+        {
+            driver.Url = javascriptPage;
+            IWebElement element = driver.FindElement(By.Id("untogglable"));
+            Assert.That(() => element.Click(), Throws.InstanceOf<ElementNotInteractableException>());
+        }
+
+        [Test]
+        public void ElementsWithOpacityZeroShouldNotBeVisible()
+        {
+            driver.Url = clickJackerPage;
+            IWebElement element = driver.FindElement(By.Id("clickJacker"));
+            Assert.That(element.Displayed, Is.False);
         }
     }
 }

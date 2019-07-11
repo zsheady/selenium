@@ -22,10 +22,8 @@
 goog.provide('goog.messaging.RespondingChannel');
 
 goog.require('goog.Disposable');
-goog.require('goog.debug.Logger');
-goog.require('goog.messaging.MessageChannel'); // interface
+goog.require('goog.log');
 goog.require('goog.messaging.MultiChannel');
-goog.require('goog.messaging.MultiChannel.VirtualChannel');
 
 
 
@@ -40,7 +38,7 @@ goog.require('goog.messaging.MultiChannel.VirtualChannel');
  * @extends {goog.Disposable}
  */
 goog.messaging.RespondingChannel = function(messageChannel) {
-  goog.base(this);
+  goog.messaging.RespondingChannel.base(this, 'constructor');
 
   /**
    * The message channel wrapped in a MultiChannel so we can send private and
@@ -54,7 +52,7 @@ goog.messaging.RespondingChannel = function(messageChannel) {
    * Map of invocation signatures to function callbacks. These are used to keep
    * track of the asyncronous service invocations so the result of a service
    * call can be passed back to a callback in the calling frame.
-   * @type {Object.<number, function(Object)>}
+   * @type {Object<number, function(Object)>}
    * @private
    */
   this.sigCallbackMap_ = {};
@@ -77,8 +75,7 @@ goog.messaging.RespondingChannel = function(messageChannel) {
 
   this.privateChannel_.registerService(
       goog.messaging.RespondingChannel.CALLBACK_SERVICE_,
-      goog.bind(this.callbackServiceHandler_, this),
-      true);
+      goog.bind(this.callbackServiceHandler_, this), true);
 };
 goog.inherits(goog.messaging.RespondingChannel, goog.Disposable);
 
@@ -120,11 +117,11 @@ goog.messaging.RespondingChannel.prototype.nextSignatureIndex_ = 0;
 
 /**
  * Logger object for goog.messaging.RespondingChannel.
- * @type {goog.debug.Logger}
+ * @type {goog.log.Logger}
  * @private
  */
 goog.messaging.RespondingChannel.prototype.logger_ =
-    goog.debug.Logger.getLogger('goog.messaging.RespondingChannel');
+    goog.log.getLogger('goog.messaging.RespondingChannel');
 
 
 /**
@@ -158,9 +155,7 @@ goog.messaging.RespondingChannel.prototype.disposeInternal = function() {
  *     the result of the service call.
  */
 goog.messaging.RespondingChannel.prototype.send = function(
-    serviceName,
-    payload,
-    callback) {
+    serviceName, payload, callback) {
 
   var signature = this.getNextSignature_();
   this.sigCallbackMap_[signature] = callback;
@@ -186,12 +181,12 @@ goog.messaging.RespondingChannel.prototype.callbackServiceHandler_ = function(
   var result = message['data'];
 
   if (signature in this.sigCallbackMap_) {
-    var callback = /** @type {function(Object)} */ (this.sigCallbackMap_[
-        signature]);
+    var callback =
+        /** @type {function(Object)} */ (this.sigCallbackMap_[signature]);
     callback(result);
     delete this.sigCallbackMap_[signature];
   } else {
-    this.logger_.warning('Received signature is invalid');
+    goog.log.warning(this.logger_, 'Received signature is invalid');
   }
 };
 
@@ -205,9 +200,7 @@ goog.messaging.RespondingChannel.prototype.callbackServiceHandler_ = function(
 goog.messaging.RespondingChannel.prototype.registerService = function(
     serviceName, callback) {
   this.publicChannel_.registerService(
-      serviceName,
-      goog.bind(this.callbackProxy_, this, callback),
-      true);
+      serviceName, goog.bind(this.callbackProxy_, this, callback), true);
 };
 
 
@@ -230,7 +223,6 @@ goog.messaging.RespondingChannel.prototype.callbackProxy_ = function(
   // exists.
   if (this.privateChannel_) {
     this.privateChannel_.send(
-        goog.messaging.RespondingChannel.CALLBACK_SERVICE_,
-        resultMessage);
+        goog.messaging.RespondingChannel.CALLBACK_SERVICE_, resultMessage);
   }
 };

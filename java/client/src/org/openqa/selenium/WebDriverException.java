@@ -1,34 +1,37 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium;
 
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import org.openqa.selenium.internal.HostIdentifier;
+
 import java.util.HashMap;
 import java.util.Map;
-
-import org.openqa.selenium.internal.BuildInfo;
 
 public class WebDriverException extends RuntimeException {
 
   public static final String SESSION_ID = "Session ID";
   public static final String DRIVER_INFO = "Driver info";
+  protected static final String BASE_SUPPORT_URL = "https://www.seleniumhq.org/exceptions/";
 
-  private Map<String, String> extraInfo = new HashMap<String, String>();
+  private final static String HOST_NAME = HostIdentifier.getHostName();
+  private final static String HOST_ADDRESS = HostIdentifier.getHostAddress();
+
+  private Map<String, String> extraInfo = new HashMap<>();
 
   public WebDriverException() {
     super();
@@ -48,7 +51,8 @@ public class WebDriverException extends RuntimeException {
 
   @Override
   public String getMessage() {
-    return createMessage(super.getMessage());
+    return super.getCause() instanceof WebDriverException
+           ? super.getMessage() : createMessage(super.getMessage());
   }
 
   private String createMessage(String originalMessageString) {
@@ -63,21 +67,13 @@ public class WebDriverException extends RuntimeException {
   }
 
   public String getSystemInformation() {
-    String host = "N/A";
-    String ip   = "N/A";
-
-    try{
-      host = InetAddress.getLocalHost().getHostName();
-      ip   = InetAddress.getLocalHost().getHostAddress();
-    } catch (UnknownHostException throw_away) {}
-
     return String.format("System info: host: '%s', ip: '%s', os.name: '%s', os.arch: '%s', os.version: '%s', java.version: '%s'",
-      host,
-      ip,
-      System.getProperty("os.name"),
-      System.getProperty("os.arch"),
-      System.getProperty("os.version"),
-      System.getProperty("java.version"));
+        HOST_NAME,
+        HOST_ADDRESS,
+        System.getProperty("os.name"),
+        System.getProperty("os.arch"),
+        System.getProperty("os.version"),
+        System.getProperty("java.version"));
   }
 
   public String getSupportUrl() {
@@ -105,7 +101,7 @@ public class WebDriverException extends RuntimeException {
   }
 
   public String getAdditionalInformation() {
-    if (! extraInfo.containsKey(DRIVER_INFO)) {
+    if (!extraInfo.containsKey(DRIVER_INFO)) {
       extraInfo.put(DRIVER_INFO, "driver.version: " + getDriverName(getStackTrace()));
     }
 

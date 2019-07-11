@@ -1,90 +1,83 @@
-/*
-Copyright 2012 Software Freedom Conservancy
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.logging;
 
-import static org.hamcrest.Matchers.greaterThan;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
-
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.openqa.selenium.remote.CapabilityType.ENABLE_PROFILING_CAPABILITY;
-import static org.openqa.selenium.testing.Ignore.Driver.ANDROID;
-import static org.openqa.selenium.testing.Ignore.Driver.CHROME;
-import static org.openqa.selenium.testing.Ignore.Driver.HTMLUNIT;
-import static org.openqa.selenium.testing.Ignore.Driver.IE;
-import static org.openqa.selenium.testing.Ignore.Driver.IPHONE;
-import static org.openqa.selenium.testing.Ignore.Driver.MARIONETTE;
-import static org.openqa.selenium.testing.Ignore.Driver.OPERA;
-import static org.openqa.selenium.testing.Ignore.Driver.OPERA_MOBILE;
-import static org.openqa.selenium.testing.Ignore.Driver.PHANTOMJS;
-import static org.openqa.selenium.testing.Ignore.Driver.SAFARI;
+import static org.openqa.selenium.testing.drivers.Browser.CHROME;
+import static org.openqa.selenium.testing.drivers.Browser.CHROMIUMEDGE;
+import static org.openqa.selenium.testing.drivers.Browser.EDGE;
+import static org.openqa.selenium.testing.drivers.Browser.HTMLUNIT;
+import static org.openqa.selenium.testing.drivers.Browser.IE;
+import static org.openqa.selenium.testing.drivers.Browser.MARIONETTE;
+import static org.openqa.selenium.testing.drivers.Browser.SAFARI;
+
+import com.google.common.collect.ImmutableList;
 
 import org.junit.After;
 import org.junit.Test;
-
 import org.openqa.selenium.By;
+import org.openqa.selenium.ImmutableCapabilities;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.logging.profiler.EventType;
-import org.openqa.selenium.remote.DesiredCapabilities;
 import org.openqa.selenium.testing.Ignore;
 import org.openqa.selenium.testing.JUnit4TestBase;
-import org.openqa.selenium.testing.TestUtilities;
 import org.openqa.selenium.testing.drivers.WebDriverBuilder;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.ImmutableList;
-import com.google.common.collect.Iterables;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
-import java.util.Arrays;
-
-@Ignore({ANDROID, CHROME, HTMLUNIT, IE, IPHONE, OPERA, OPERA_MOBILE, PHANTOMJS, SAFARI, MARIONETTE})
+@Ignore(HTMLUNIT)
+@Ignore(IE)
+@Ignore(EDGE)
+@Ignore(SAFARI)
+@Ignore(MARIONETTE)
 public class PerformanceLoggingTest extends JUnit4TestBase {
 
-  private WebDriver localDriver;
+  private WebDriver loggingDriver;
 
   @After
   public void quitDriver() {
-    if (localDriver != null) {
-      localDriver.quit();
-      localDriver = null;
+    if (loggingDriver != null) {
+      loggingDriver.quit();
+      loggingDriver = null;
     }
   }
 
   @Test
   public void testDisabledProfilingDoesNotLog() {
     driver.get(pages.simpleTestPage);
-    assertEquals("Profiler should not log when disabled",
-        getProfilerEntries(driver).getAll().size(), 0);
+    assertThat(getProfilerEntries(driver).getAll())
+        .describedAs("Profiler should not log when disabled")
+        .hasSize(0);
   }
 
   @Test
   public void testLogsSingleHttpCommand() {
     startLoggingDriver();
-    ImmutableList<LogEntry> entries = getProfilerEntriesOfType(getProfilerEntries(localDriver),
+    ImmutableList<LogEntry> entries = getProfilerEntriesOfType(getProfilerEntries(loggingDriver),
         EventType.HTTP_COMMAND);
     // Expect start of newSession, end of newSession, start of getLogs, end of getLogs
     String[] expected = {"\"command\": \"newSession\",\"startorend\": \"start\"",
         "\"command\": \"newSession\",\"startorend\": \"end\"",
         "\"command\": \"getLog\",\"startorend\": \"start\"",
         "\"command\": \"getLog\",\"startorend\": \"end\""};
-    assertTrue("Profiler entries should contain: " + Arrays.toString(expected),
-         containsExpectedEntries(entries, expected));
+    assertThat(containsExpectedEntries(entries, expected)).isTrue();
   }
 
   /**
@@ -109,18 +102,22 @@ public class PerformanceLoggingTest extends JUnit4TestBase {
   }
 
   @Test
-  public void testGetsYieldToPageLoadLogEntries() throws Exception {
+  @Ignore(CHROME)
+  @Ignore(CHROMIUMEDGE)
+  public void testGetsYieldToPageLoadLogEntries() {
     startLoggingDriver();
-    localDriver.get(pages.formPage);
-    localDriver.findElement(By.id("submitButton")).click();
-    assertThat(getProfilerEntriesOfType(getProfilerEntries(localDriver),
-        EventType.YIELD_TO_PAGE_LOAD).size(), greaterThan(0));
+    loggingDriver.get(pages.formPage);
+    loggingDriver.findElement(By.id("submitButton")).click();
+    assertThat(
+        getProfilerEntriesOfType(getProfilerEntries(loggingDriver), EventType.YIELD_TO_PAGE_LOAD).size())
+        .isGreaterThan(0);
   }
 
   private void startLoggingDriver() {
-    WebDriverBuilder builder = new WebDriverBuilder().setDesiredCapabilities(
-        getCapabilitiesWithProfilerOn(true));
-    localDriver = builder.get();
+    if (loggingDriver == null) {
+      loggingDriver = new WebDriverBuilder()
+          .get(new ImmutableCapabilities(ENABLE_PROFILING_CAPABILITY, true));
+    }
   }
 
   private LogEntries getProfilerEntries(WebDriver driver) {
@@ -129,30 +126,7 @@ public class PerformanceLoggingTest extends JUnit4TestBase {
 
   private ImmutableList<LogEntry> getProfilerEntriesOfType(final LogEntries entries,
       final EventType eventType) {
-    return ImmutableList.copyOf(Iterables.filter(entries, new Predicate<LogEntry>() {
-      public boolean apply(LogEntry entry) {
-        return entry.getMessage().contains(eventType.toString());
-      }
-    }));
-  }
-
-  private static DesiredCapabilities getCapabilitiesWithProfilerOn(boolean enabled) {
-    DesiredCapabilities capabilities = DesiredCapabilities.firefox();
-    capabilities.setCapability(ENABLE_PROFILING_CAPABILITY, enabled);
-    return capabilities;
-  }
-
-  @Test
-  public void testPriorityForProfilerCapability() {
-    // TODO: Resolve why this test doesn't work on the remote server
-    assumeTrue(TestUtilities.isLocal());
-
-    WebDriverBuilder builder = new WebDriverBuilder().
-        setDesiredCapabilities(getCapabilitiesWithProfilerOn(false)).
-        setRequiredCapabilities(getCapabilitiesWithProfilerOn(true));
-    localDriver = builder.get();
-
-    assertEquals("Start up should render four profiling entries", 4,
-        getProfilerEntriesOfType(getProfilerEntries(localDriver), EventType.HTTP_COMMAND).size());
+    return ImmutableList.copyOf(StreamSupport.stream(entries.spliterator(), false).filter(
+        entry -> entry.getMessage().contains(eventType.toString())).collect(Collectors.toList()));
   }
 }

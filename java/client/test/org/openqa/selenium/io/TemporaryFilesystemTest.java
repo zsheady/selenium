@@ -1,23 +1,25 @@
-/*
-Copyright 2012 Selenium committers
-Copyright 2012 Software Freedom Conservancy
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.io;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 import org.openqa.selenium.WebDriverException;
@@ -25,14 +27,11 @@ import org.openqa.selenium.WebDriverException;
 import java.io.File;
 import java.io.IOException;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
 public class TemporaryFilesystemTest {
   private TemporaryFilesystem tmpFs;
 
   @Before
-  public void setUp() throws Exception {
+  public void setUp() {
     File baseForTest = new File(System.getProperty("java.io.tmpdir"), "tmpTest");
     baseForTest.mkdir();
 
@@ -43,7 +42,7 @@ public class TemporaryFilesystemTest {
   public void testCanCreateTempFiles() {
     File tmp = tmpFs.createTempDir("TemporaryFilesystem", "canCreate");
     try {
-      assertTrue(tmp.exists());
+      assertThat(tmp).exists();
     } catch (WebDriverException e) {
       tmp.delete();
       throw e;
@@ -52,77 +51,57 @@ public class TemporaryFilesystemTest {
 
   @Test
   public void testFilesystemCleanupDeletesDirs() {
-    if (!tmpFs.shouldReap()) {
-      System.out.println("Reaping of files disabled - " +
-          "ignoring testFilesystemCleanupDeletesDirs");
-      return;
-    }
+    Assume.assumeTrue("Reaping of files disabled", tmpFs.shouldReap());
+
     File tmp = tmpFs.createTempDir("TemporaryFilesystem", "fcdd");
-    assertTrue(tmp.exists());
+    assertThat(tmp).exists();
 
     tmpFs.deleteTemporaryFiles();
-    assertFalse(tmp.exists());
+    assertThat(tmp).doesNotExist();
   }
 
   @Test
   public void testFilesystemCleanupDeletesRecursive() throws IOException {
-    if (!tmpFs.shouldReap()) {
-      System.out.println("Reaping of files disabled - " +
-          "ignoring testFilesystemCleanupDeletesRecursive");
-      return;
-    }
+    Assume.assumeTrue("Reaping of files disabled", tmpFs.shouldReap());
+
     File tmp = tmpFs.createTempDir("TemporaryFilesystem", "fcdr");
     createDummyFilesystemContent(tmp);
 
     tmpFs.deleteTemporaryFiles();
-    assertFalse(tmp.exists());
+    assertThat(tmp).doesNotExist();
   }
 
   @Test
   public void testSpecificDeleteRequestHonored() throws IOException {
-    if (!tmpFs.shouldReap()) {
-      System.out.println("Reaping of files disabled - " +
-          "ignoring testSpecificDeleteRequestHonored");
-      return;
-    }
+    Assume.assumeTrue("Reaping of files disabled", tmpFs.shouldReap());
+
     File tmp = tmpFs.createTempDir("TemporaryFilesystem", "sdrh");
     createDummyFilesystemContent(tmp);
 
     tmpFs.deleteTempDir(tmp);
 
-    assertFalse(tmp.exists());
+    assertThat(tmp).doesNotExist();
   }
 
   @Test
   public void testDoesNotDeleteArbitraryFiles() throws IOException {
     File tempFile = File.createTempFile("TemporaryFilesystem", "dndaf");
-    assertTrue(tempFile.exists());
+    assertThat(tempFile).exists();
     try {
       tmpFs.deleteTempDir(tempFile);
-      assertTrue(tempFile.exists());
+      assertThat(tempFile).exists();
     } finally {
       tempFile.delete();
     }
   }
 
   @Test
-  public void testShouldReapDefaultsTrue() {
-    if (!tmpFs.shouldReap()) {
-      System.out.println("Reaping of files disabled - " +
-          "ignoring testShouldReapDefaultsTrue");
-      return;
-    }
-
-    assertTrue(tmpFs.shouldReap());
-  }
-
-  @Test
   public void testShouldDeleteTempDir() {
     final File tempDir = tmpFs.createTempDir("foo", "bar");
-    assertTrue(tempDir.exists());
+    assertThat(tempDir).exists();
     tmpFs.deleteTemporaryFiles();
     tmpFs.deleteBaseDir();
-    assertFalse(tempDir.exists());
+    assertThat(tempDir).doesNotExist();
   }
 
   @Test
@@ -152,11 +131,11 @@ public class TemporaryFilesystemTest {
     // Reset to the default dir
     TemporaryFilesystem.setTemporaryDirectory(new File(System.getProperty("java.io.tmpdir")));
 
-    assertTrue("Directory should have been created in the provided temp dir.", isInOtherDir);
+    assertThat(isInOtherDir).isTrue();
   }
 
   private void createDummyFilesystemContent(File dir) throws IOException {
-    assertTrue(dir.isDirectory());
+    assertThat(dir.isDirectory()).isTrue();
     File.createTempFile("cleanup", "file", dir);
     File childDir = new File(dir, "child");
     childDir.mkdir();

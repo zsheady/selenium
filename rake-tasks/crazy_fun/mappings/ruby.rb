@@ -5,16 +5,19 @@ class RubyMappings
 
     fun.add_mapping "ruby_test", CheckTestArgs.new
     fun.add_mapping "ruby_test", AddTestDefaults.new
+    fun.add_mapping "ruby_test", ExpandSourceFiles.new
     fun.add_mapping "ruby_test", RubyTest.new
     fun.add_mapping "ruby_test", AddTestDependencies.new
 
+    fun.add_mapping "ruby_lint", ExpandSourceFiles.new
+    fun.add_mapping "ruby_lint", RubyLinter.new
+
     fun.add_mapping "rubydocs", RubyDocs.new
-    fun.add_mapping "rubygem",  RubyGem.new
+    fun.add_mapping "rubygem", RubyGem.new
   end
 
   class RubyLibrary < Tasks
-
-    def handle(fun, dir, args)
+    def handle(_fun, dir, args)
       desc "Build #{args[:name]} in build/#{dir}"
       task_name = task_name(dir, args[:name])
 
@@ -50,39 +53,33 @@ class RubyMappings
     def build_dir
       "build"
     end
-
   end
 
   class CheckTestArgs
-    def handle(fun, dir, args)
+    def handle(_fun, dir, args)
       raise "no :srcs specified for #{dir}" unless args.has_key? :srcs
       raise "no :name specified for #{dir}" unless args.has_key? :name
     end
   end
 
   class AddTestDefaults
-    def handle(fun, dir, args)
+    def handle(_fun, dir, args)
       args[:include] = Array(args[:include])
       args[:include] << "#{dir}/spec"
 
       args[:command] = args[:command] || "rspec"
-      args[:require] = Array(args[:require])
+    end
+  end
 
-      # move?
-      args[:srcs] = args[:srcs].map { |str|
-        Dir[File.join(dir, str)]
-      }.flatten
+  class ExpandSourceFiles
+    def handle(_fun, dir, args)
+      args[:srcs] = args[:srcs].map { |str| Dir[File.join(dir, str)] }.flatten
     end
   end
 
   class AddTestDependencies < Tasks
-    def handle(fun, dir, args)
+    def handle(_fun, dir, args)
       task = Rake::Task[task_name(dir, "#{args[:name]}-test")]
-
-      if Platform.jruby?
-        # TODO: # Specifying a dependency here isn't ideal
-        add_dependencies task, dir, ["//java/client/test/org/openqa/selenium/environment"]
-      end
 
       if args.has_key?(:deps)
         add_dependencies task, dir, args[:deps]
@@ -91,77 +88,67 @@ class RubyMappings
   end
 
   class RubyTest < Tasks
-    def handle(fun, dir, args)
+    def handle(_fun, dir, args)
       desc "Run ruby tests for #{args[:name]}"
-      task task_name(dir, "#{args[:name]}-test") do
+      task task_name(dir, "#{args[:name]}-test") => %W[//#{dir}:bundle] do
         STDOUT.sync = true
         puts "Running: #{args[:name]} ruby tests"
 
-        add_jruby_requires(args) if Platform.jruby? && !ENV['force_local_ruby']
-
-        ENV['WD_SPEC_DRIVER'] = args[:name]
-        ENV['CI_REPORTS']     = "build/test_logs"
+        if args[:name].match /^remote-(.*)/
+          puts $1
+          ENV['WD_REMOTE_BROWSER'] = $1.tr('-', '_')
+          puts ENV['WD_REMOTE_BROWSER']
+          ENV['WD_SPEC_DRIVER'] = 'remote'
+        else
+          ENV['WD_SPEC_DRIVER'] = args[:name].tr('-', '_')
+        end
 
         ruby :include => args[:include],
-             :require => args[:require],
              :command => args[:command],
-             :args    => %w[--format CI::Reporter::RSpec --format s --color] + (!!ENV['example'] ? ['--example', ENV['example']] : []),
+             :args    => %w[--format doc --color] + (!!ENV['example'] ? ['--example', ENV['example']] : []),
              :debug   => !!ENV['log'],
              :files   => args[:srcs]
       end
     end
-
-    def add_jruby_requires(args)
-      jars = %w[
-        multi_json.jar
-        rubyzip.jar
-        childprocess.jar
-        rack.jar
-        webmock.jar
-        websocket.jar
-      ].map { |jar| File.join("third_party/jruby", jar) }
-
-      args[:require] ||= []
-      args[:require] += jars
-    end
   end
 
-  class RubyDocs
-    def handle(fun, dir, args)
-      files      = args[:files] || raise("no :files specified for rubydocs")
-      output_dir = args[:output_dir] || raise("no :output_dir specified for rubydocs")
-
-      # we define a wrapper task to avoid calling require "yard" at parse time
-      desc 'Generate Ruby API docs'
-      task "//#{dir}:docs" do |t|
-        raise "yard is not installed, unable to generate docs" unless have_yard?
-        task = YARD::Rake::YardocTask.new { |t|
-          t.files = Array(files).map { |glob| Dir[glob] }.flatten
-          t.options << "--verbose"
-          t.options << "--readme" << args[:readme] if args.has_key?(:readme)
-          t.options << "--output-dir" << output_dir
-        }
-
-        Rake::Task[task.name].invoke
+  class RubyLinter < Tasks
+    def handle(_fun, dir, args)
+      desc 'Run RuboCop'
+      task task_name(dir, args[:name]) => args[:deps] do
+        ruby :command => 'rubocop',
+             :files   => args[:srcs]
       end
     end
+  end # RubyLinter
 
-    def have_yard?
-      require 'yard'
-      true
-    rescue LoadError
-      false
+  class RubyDocs < Tasks
+    def handle(_fun, dir, args)
+      files = args[:files] || raise("no :files specified for rubydocs")
+      output_dir = args[:output_dir] || raise("no :output_dir specified for rubydocs")
+      readme = args[:readme] || raise("no :readme specified for rubydocs")
+
+      files = files.map { |pattern| "build/rb/#{pattern}" }
+      output_dir = "build/#{output_dir}"
+      readme = "build/rb/#{readme}"
+
+      desc 'Generate Ruby API docs'
+      task "//#{dir}:docs" => args[:deps] do
+        yard_args = %w[doc --verbose]
+        yard_args += ["--output-dir", output_dir]
+        yard_args += ["--readme", readme]
+
+        ruby :command => "yard",
+             :args    => yard_args,
+             :files   => files
+      end
     end
   end # RubyDocs
 
   class RubyGem
-    GEMSPEC_HEADER = "# Automatically generated by the build system. Edits may be lost.\n"
+    def handle(_fun, dir, args)
+      raise "no :gemspec for rubygem" unless args[:gemspec]
 
-    def handle(fun, dir, args)
-      raise "no :dir for rubygem" unless args[:dir]
-      raise "no :version for rubygem" unless args[:version]
-
-      define_spec_task      dir, args
       define_clean_task     dir, args
       define_build_task     dir, args
       define_release_task   dir, args
@@ -169,138 +156,92 @@ class RubyMappings
       define_gem_install_task dir, args
     end
 
-    def define_spec_task(dir, args)
-      gemspec = File.join(args[:dir], "#{args[:name]}.gemspec")
-
-      file gemspec do
-        mkdir_p args[:dir]
-        Dir.chdir(args[:dir]) {
-          File.open("#{args[:name]}.gemspec", "w") { |file|
-            file << GEMSPEC_HEADER
-            file << gemspec(args).to_ruby
-          }
-        }
-      end
-
-      task("clean_#{gemspec}") { rm_rf gemspec }
-    end
-
     def define_build_task(dir, args)
-      gemfile = File.join("build", "#{args[:name]}-#{args[:version]}.gem")
-      gemspec = File.join(args[:dir], "#{args[:name]}.gemspec")
+      gemspec  = File.expand_path(args[:gemspec])
+      deps     = Array(args[:deps])
+      spec_dir = File.dirname(gemspec)
 
-      deps = (args[:deps] || [])
-      deps << "clean_#{gemspec}" << gemspec
+      desc "Build #{args[:gemspec]}"
+      task "//#{dir}:gem:build" => deps do
+        require 'rubygems/package'
 
-      file gemfile => deps do
-        require 'rubygems/builder'
-        spec = eval(File.read(gemspec))
-        file = Dir.chdir(args[:dir]) {
-          Gem::Builder.new(spec).build
-        }
+        file = Dir.chdir(spec_dir) do
+          spec = eval(File.read(gemspec))
+          Gem::Package.build(spec)
+        end
 
-        mv File.join(args[:dir], file), gemfile
+        mv File.join(spec_dir, file), "build/"
       end
-
-      desc "Build #{gemfile}"
-      task "//#{dir}:gem:build" => gemfile
     end
 
-    def define_clean_task(dir, args)
+    def define_clean_task(dir, _args)
       desc 'Clean rubygem artifacts'
       task "//#{dir}:gem:clean" do
-        rm_rf args[:dir]
-        rm_rf "build/*.gem"
+        Dir['build/*.gem'].each { |gem| rm(gem) }
       end
     end
 
-    def define_release_task(dir, args)
+    def define_release_task(dir, _args)
       desc 'Build and release the ruby gem to Gemcutter'
       task "//#{dir}:gem:release" => %W[//#{dir}:gem:clean //#{dir}:gem:build] do
-        sh "gem push build/#{args[:name]}-#{args[:version]}.gem"
+        gem = Dir['build/*.gem'].first # safe as long as :clean does its job
+        sh "gem", "push", gem
       end
     end
 
-    def define_gem_install_task(dir, args)
+    def define_gem_install_task(dir, _args)
       desc 'Install gem dependencies for the current Ruby'
-      task "//#{dir}:install-gems" do
-        dependencies = Array(args[:gemdeps]) + Array(args[:devdeps])
-        dependencies.each do |dep|
-          name, version = dep.shift
-          sh "gem", "install", name, "--version", version, "--no-rdoc", "--no-ri"
+      task "//#{dir}:bundle" do
+        bundler_path = "#{Dir.pwd}/build/third_party/rb/bundler"
+        mkdir_p bundler_path
+
+        bin_path = [bundler_path, "bin"].join(File::SEPARATOR)
+        bin_path.tr!(File::SEPARATOR, File::ALT_SEPARATOR) if File::ALT_SEPARATOR # Windows
+        mkdir_p bin_path
+
+        path = ENV["PATH"].split(File::PATH_SEPARATOR)
+        path = [bin_path, path].flatten.uniq.join(File::PATH_SEPARATOR)
+
+        ENV["BUNDLE_GEMFILE"] = "rb/Gemfile"
+        ENV["GEM_PATH"] = bundler_path
+        ENV["PATH"] = path
+
+        gems = `gem list`.split("\n")
+        if gems.grep(/^bundler\s/).empty?
+          bundler_gem = Dir["third_party/rb/bundler-*.gem"].first
+
+          sh "gem", "install", "--local", "--no-ri", "--no-rdoc",
+             "--install-dir", ENV["GEM_PATH"],
+             "--bindir", ENV["PATH"].split(File::PATH_SEPARATOR).first,
+             bundler_gem
         end
+
+        sh "bundle", "config", "--local", "cache_path", "../third_party/rb/vendor/cache"
+        sh "bundle", "config", "--local", "path", "#{Dir.pwd}/build/third_party/rb/vendor/bundle"
+
+        sh "bundle", "install", "--local"
       end
     end
-
-    def gemspec(args)
-      Gem::Specification.new do |s|
-        s.name                  = args[:name]
-        s.version               = args[:version]
-        s.summary               = args[:summary]
-        s.description           = args[:description]
-        s.authors               = args[:author]
-        s.email                 = args[:email]
-        s.homepage              = args[:homepage]
-        s.files                 = Dir[*args[:files]]
-        s.license               = args[:license]
-        s.required_ruby_version = args[:required_ruby_version]
-
-        args[:gemdeps].each { |dep| s.add_dependency(*dep.shift) }
-        args[:devdeps].each { |dep| s.add_development_dependency(*dep.shift) }
-      end
-    end
-
   end # RubyGem
 end # RubyMappings
 
-class RubyRunner
-
-  def self.run(opts)
-    cmd = []
-
-    if ENV['force_local_ruby']
-      cmd << 'ruby'
-
-      if Platform.jruby?
-        require 'java'
-        JRuby.runtime.instance_config.run_ruby_in_process = false
-      end
-    else
-      if Platform.jruby?
-        require 'java'
-        JRuby.runtime.instance_config.run_ruby_in_process = true
-        cmd << "ruby"
-        cmd << "-J-Djava.awt.headless=true" if opts[:headless]
-      elsif defined?(Gem)
-        cmd << Gem.ruby
-      else
-        cmd << "ruby"
-      end
-    end
-
-    if opts[:debug]
-      cmd << "-d"
-    end
-
-    if opts.has_key? :include
-      cmd << "-I"
-      cmd << Array(opts[:include]).join(File::PATH_SEPARATOR)
-    end
-
-    Array(opts[:require]).each do |f|
-      cmd << "-r#{f}"
-    end
-
-    cmd << "-S" << opts[:command] if opts.has_key? :command
-    cmd += Array(opts[:args]) if opts.has_key? :args
-    cmd += Array(opts[:files]) if opts.has_key? :files
-
-    puts cmd.join(' ')
-
-    sh(*cmd)
-  end
-end
-
 def ruby(opts)
-  RubyRunner.run opts
+  cmd = ["bundle", "exec", "ruby", "-w"]
+
+  if opts[:debug]
+    cmd << "-d"
+  end
+
+  if opts.has_key? :include
+    cmd << "-I"
+    cmd << Array(opts[:include]).join(File::PATH_SEPARATOR)
+  end
+
+  cmd << "-S" << opts[:command] if opts.has_key? :command
+  cmd += Array(opts[:args]) if opts.has_key? :args
+  cmd += Array(opts[:files]) if opts.has_key? :files
+
+  puts cmd.join(' ')
+
+  sh(*cmd)
 end

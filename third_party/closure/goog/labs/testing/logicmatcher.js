@@ -31,14 +31,16 @@ goog.require('goog.labs.testing.Matcher');
 /**
  * The AllOf matcher.
  *
- * @param {!Array.<!goog.labs.testing.Matcher>} matchers Input matchers.
+ * @param {!Array<!goog.labs.testing.Matcher>} matchers Input matchers.
  *
  * @constructor
+ * @struct
  * @implements {goog.labs.testing.Matcher}
+ * @final
  */
 goog.labs.testing.AllOfMatcher = function(matchers) {
   /**
-   * @type {!Array.<!goog.labs.testing.Matcher>}
+   * @type {!Array<!goog.labs.testing.Matcher>}
    * @private
    */
   this.matchers_ = matchers;
@@ -63,8 +65,7 @@ goog.labs.testing.AllOfMatcher.prototype.matches = function(actualValue) {
  *
  * @override
  */
-goog.labs.testing.AllOfMatcher.prototype.describe =
-    function(actualValue) {
+goog.labs.testing.AllOfMatcher.prototype.describe = function(actualValue) {
   // TODO(user) : Optimize this to remove duplication with matches ?
   var errorString = '';
   goog.array.forEach(this.matchers_, function(matcher) {
@@ -80,14 +81,16 @@ goog.labs.testing.AllOfMatcher.prototype.describe =
 /**
  * The AnyOf matcher.
  *
- * @param {!Array.<!goog.labs.testing.Matcher>} matchers Input matchers.
+ * @param {!Array<!goog.labs.testing.Matcher>} matchers Input matchers.
  *
  * @constructor
+ * @struct
  * @implements {goog.labs.testing.Matcher}
+ * @final
  */
 goog.labs.testing.AnyOfMatcher = function(matchers) {
   /**
-   * @type {!Array.<!goog.labs.testing.Matcher>}
+   * @type {!Array<!goog.labs.testing.Matcher>}
    * @private
    */
   this.matchers_ = matchers;
@@ -111,8 +114,7 @@ goog.labs.testing.AnyOfMatcher.prototype.matches = function(actualValue) {
  *
  * @override
  */
-goog.labs.testing.AnyOfMatcher.prototype.describe =
-    function(actualValue) {
+goog.labs.testing.AnyOfMatcher.prototype.describe = function(actualValue) {
   // TODO(user) : Optimize this to remove duplication with matches ?
   var errorString = '';
   goog.array.forEach(this.matchers_, function(matcher) {
@@ -131,7 +133,9 @@ goog.labs.testing.AnyOfMatcher.prototype.describe =
  * @param {!goog.labs.testing.Matcher} matcher The matcher to negate.
  *
  * @constructor
+ * @struct
  * @implements {goog.labs.testing.Matcher}
+ * @final
  */
 goog.labs.testing.IsNotMatcher = function(matcher) {
   /**
@@ -157,8 +161,7 @@ goog.labs.testing.IsNotMatcher.prototype.matches = function(actualValue) {
  *
  * @override
  */
-goog.labs.testing.IsNotMatcher.prototype.describe =
-    function(actualValue) {
+goog.labs.testing.IsNotMatcher.prototype.describe = function(actualValue) {
   return 'The following is false: ' + this.matcher_.describe(actualValue);
 };
 

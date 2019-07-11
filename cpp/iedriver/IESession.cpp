@@ -1,5 +1,8 @@
-// Copyright 2011 Software Freedom Conservancy
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -12,9 +15,23 @@
 // limitations under the License.
 
 #include "IESession.h"
-#include "IECommandExecutor.h"
+
 #include "logging.h"
-#include "interactions.h"
+
+#include "BrowserFactory.h"
+#include "CommandExecutor.h"
+#include "IECommandExecutor.h"
+#include "messages.h"
+#include "StringUtilities.h"
+#include "WebDriverConstants.h"
+
+#define MUTEX_NAME L"WD_INITIALIZATION_MUTEX"
+#define MUTEX_WAIT_TIMEOUT 30000
+#define THREAD_WAIT_TIMEOUT 30000
+#define EXECUTOR_EXIT_WAIT_TIMEOUT 5000
+#define EXECUTOR_EXIT_WAIT_INTERVAL 100
+
+typedef unsigned (__stdcall *ThreadProcedure)(void*);
 
 namespace webdriver {
 
@@ -58,13 +75,15 @@ void IESession::Initialize(void* init_params) {
 
   unsigned int thread_id = 0;
 
-  HANDLE event_handle = ::CreateEvent(NULL, TRUE, FALSE, EVENT_NAME);
+  HANDLE event_handle = ::CreateEvent(NULL, TRUE, FALSE, WEBDRIVER_START_EVENT_NAME);
   if (event_handle == NULL) {
-    LOGERR(DEBUG) << "Unable to create event " << EVENT_NAME;
+    LOGERR(DEBUG) << "Unable to create event " << WEBDRIVER_START_EVENT_NAME;
   }
+
+  ThreadProcedure thread_proc = &IECommandExecutor::ThreadProc;
   HANDLE thread_handle = reinterpret_cast<HANDLE>(_beginthreadex(NULL,
                                                                  0,
-                                                                 &IECommandExecutor::ThreadProc,
+                                                                 thread_proc,
                                                                  reinterpret_cast<void*>(&thread_context),
                                                                  0,
                                                                  &thread_id));
@@ -85,14 +104,6 @@ void IESession::Initialize(void* init_params) {
   std::string session_id = "";
   if (thread_context.hwnd != NULL) {
     LOG(TRACE) << "Created thread for command executor returns HWND: '" << thread_context.hwnd << "'";
-
-    // Send INIT to window with port as WPARAM
-    // It is already deprecated
-    ::SendMessage(thread_context.hwnd,
-                  WD_INIT,
-                  static_cast<WPARAM>(port),
-                  NULL);
-
     std::vector<wchar_t> window_text_buffer(37);
     ::GetWindowText(thread_context.hwnd, &window_text_buffer[0], 37);
     session_id = StringUtilities::ToString(&window_text_buffer[0]);
@@ -115,7 +126,7 @@ void IESession::ShutDown(void) {
   LOG(TRACE) << "Entering IESession::ShutDown";
 
   // Kill the background thread first - otherwise the IE process crashes.
-  stopPersistentEventFiring();
+  ::SendMessage(this->executor_window_handle_, WD_QUIT, NULL, NULL);
 
   // Don't terminate the thread until the browsers have all been deallocated.
   // Note: Loop count of 6, because the timeout is 5 seconds, giving us a nice,
@@ -192,10 +203,17 @@ bool IESession::ExecuteCommand(const std::string& serialized_command,
   // 3. Waiting for the response to be populated
   // 4. Retrieving the response
   // 5. Retrieving whether the command sent caused the session to be ready for shutdown
-  ::SendMessage(this->executor_window_handle_,
-                WD_SET_COMMAND,
-                NULL,
-                reinterpret_cast<LPARAM>(serialized_command.c_str()));
+  LRESULT set_command_result = ::SendMessage(this->executor_window_handle_,
+                                             WD_SET_COMMAND,
+                                             NULL,
+                                             reinterpret_cast<LPARAM>(serialized_command.c_str()));
+  while (set_command_result == 0) {
+    ::Sleep(500);
+    set_command_result = ::SendMessage(this->executor_window_handle_,
+                                       WD_SET_COMMAND,
+                                       NULL,
+                                       reinterpret_cast<LPARAM>(serialized_command.c_str()));
+  }
   ::PostMessage(this->executor_window_handle_,
                 WD_EXEC_COMMAND,
                 NULL,

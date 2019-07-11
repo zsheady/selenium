@@ -1,9 +1,9 @@
 
-js_deps(name = "deps",
+js_library(name = "deps",
   srcs = [ "*.js" ],
   deps = [
-    "//javascript/atoms:deps",
-    "//javascript/webdriver/atoms:deps",
+    "//javascript/atoms:all_js",
+    "//javascript/webdriver/atoms:all_js",
   ])
 
 js_binary(name = "selenium-atoms",
@@ -13,16 +13,6 @@ js_binary(name = "selenium-atoms",
   out = "build/javascript/selenium-atoms/selenium-atoms.js",
   flags = [
     "--define=goog.NATIVE_ARRAY_PROTOTYPES=false",
-  ])
-
-js_test(name = "test",
-  srcs = [
-    "test/*_test.html",
-  ],
-  deps = [
-    ":deps",
-    "//java/client/test/org/openqa/selenium/javascript",
-    "//java/server/test/org/openqa/selenium:server-with-tests:uber",
   ])
 
 js_fragment(name = "findElement",
@@ -75,7 +65,7 @@ js_fragment(name = "isTextPresent",
   module = "core.text",
   function = "core.text.isTextPresent",
   srcs = [":deps"])
-  
+
 js_fragment(name = "isVisible",
   module = "core.browserbot",
   function = "core.browserbot.isVisible",

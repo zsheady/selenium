@@ -1,5 +1,8 @@
-// Copyright 2011 Software Freedom Conservancy
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -12,7 +15,15 @@
 // limitations under the License.
 
 #include "HtmlDialog.h"
+
+#include "errorcodes.h"
 #include "logging.h"
+
+#include "BrowserFactory.h"
+#include "StringUtilities.h"
+#include "WebDriverConstants.h"
+
+#define HIDDEN_PARENT_WINDOW_CLASS "Internet Explorer_Hidden"
 
 namespace webdriver {
 
@@ -50,9 +61,14 @@ void __stdcall HtmlDialog::OnLoad(IHTMLEventObj *pEvtObj) {
 }
 
 void HtmlDialog::GetDocument(IHTMLDocument2** doc) {
+  this->GetDocument(false, doc);
+}
+
+void HtmlDialog::GetDocument(const bool force_top_level_document,
+                             IHTMLDocument2** doc) {
   LOG(TRACE) << "Entering HtmlDialog::GetDocument";
   HRESULT hr = S_OK;
-  if (this->focused_frame_window() == NULL) {
+  if (this->focused_frame_window() == NULL || force_top_level_document) {
     hr = this->window_->get_document(doc);
   } else {
     hr = this->focused_frame_window()->get_document(doc);
@@ -67,6 +83,7 @@ void HtmlDialog::Close() {
   LOG(TRACE) << "Entering HtmlDialog::Close";
   if (!this->is_closing()) {
     this->is_navigating_ = false;
+    this->set_is_closing(true);
     // Closing the browser, so having focus on a frame doesn't
     // make any sense.
     this->SetFocusedFrameByElement(NULL);
@@ -95,12 +112,20 @@ bool HtmlDialog::IsValidWindow() {
   return true;
 }
 
+bool HtmlDialog::SetFullScreen(bool is_full_screen) {
+  return false;
+}
+
+bool HtmlDialog::IsFullScreen() {
+  return false;
+}
+
 bool HtmlDialog::IsBusy() {
   LOG(TRACE) << "Entering HtmlDialog::IsBusy";
   return false;
 }
 
-bool HtmlDialog::Wait() {
+bool HtmlDialog::Wait(const std::string& page_load_strategy) {
   LOG(TRACE) << "Entering HtmlDialog::Wait";
   // If the window is no longer valid, the window is closing,
   // and the wait is completed.
@@ -108,42 +133,31 @@ bool HtmlDialog::Wait() {
     return true;
   }
 
-  // If we're not navigating to a new location, we should check to see if
-  // a new modal dialog or alert has been opened. If one has, the wait is complete,
-  // so we must set the flag indicating to the message loop not to call wait
-  // anymore.
-  if (!this->is_navigating_) {
-    ::Sleep(100);
-    HWND child_dialog_handle = this->GetActiveDialogWindowHandle();
-    if (child_dialog_handle != NULL) {
-      // Check to see if the dialog opened is another HTML dialog. If so,
-      // notify the IECommandExecutor that a new window exists.
-      //std::vector<char> window_class_name(34);
-      //if (::GetClassNameA(child_dialog_handle, &window_class_name[0], 34)) {
-      //  if (strcmp(HTML_DIALOG_WINDOW_CLASS, &window_class_name[0]) == 0) {
-      //    HWND content_window_handle = this->FindContentWindowHandle(child_dialog_handle);
-      //    if (content_window_handle != NULL) {
-      //      // Must have a sleep here to give IE a chance to draw the window.
-      //      ::Sleep(250);
-      //      ::PostMessage(this->executor_handle(),
-      //                    WD_NEW_HTML_DIALOG,
-      //                    NULL,
-      //                    reinterpret_cast<LPARAM>(content_window_handle));
-      //    }
-      //  }
-      //}
-      this->set_wait_required(false);
-      return true;
-    }
+  // Check to see if a new dialog has opened up on top of this one.
+  // If so, the wait is completed, no matter whether the OnUnload
+  // event has fired signaling navigation started, nor whether the
+  // OnLoad event has fired signaling navigation complete. Set the
+  // flag so that the Wait method is no longer called.
+  HWND child_dialog_handle = this->GetActiveDialogWindowHandle();
+  if (child_dialog_handle != NULL) {
+    this->is_navigating_ = false;
+    this->set_wait_required(false);
+    return true;
   }
 
-  // Otherwise, we wait until navigation is complete.
+  // Otherwise, we wait a short amount and see if navigation is complete
+  // (signaled by the OnLoad event firing).
   ::Sleep(250);
   return !this->is_navigating_;
 }
 
-HWND HtmlDialog::GetWindowHandle() {
-  LOG(TRACE) << "Entering HtmlDialog::GetWindowHandle";
+HWND HtmlDialog::GetContentWindowHandle() {
+  LOG(TRACE) << "Entering HtmlDialog::GetContentWindowHandle";
+  return this->window_handle();
+}
+
+HWND HtmlDialog::GetBrowserWindowHandle() {
+  LOG(TRACE) << "Entering HtmlDialog::GetBrowserWindowHandle";
   return this->window_handle();
 }
 
@@ -175,7 +189,21 @@ std::string HtmlDialog::GetTitle() {
 
 HWND HtmlDialog::GetTopLevelWindowHandle(void) {
   LOG(TRACE) << "Entering HtmlDialog::GetTopLevelWindowHandle";
-  return ::GetParent(this->window_handle());
+  HWND parent_handle = ::GetParent(this->window_handle());
+
+  // "Internet Explorer_Hidden\0" == 25
+  std::vector<char> parent_class_buffer(25);
+  if (::GetClassNameA(parent_handle, &parent_class_buffer[0], 25)) {
+    if (strcmp(HIDDEN_PARENT_WINDOW_CLASS, &parent_class_buffer[0]) == 0) {
+      // Some versions of Internet Explorer re-parent a closing showModalDialog
+      // window to a hidden parent window. If that is what we see happening
+      // here, that will be equivalent to the parent window no longer being
+      // valid, and we can return an invalid handle, indicating the window is
+      // "closed."
+      return NULL;
+    }
+  }
+  return parent_handle;
 }
 
 HWND HtmlDialog::GetActiveDialogWindowHandle() {

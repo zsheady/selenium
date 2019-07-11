@@ -1,327 +1,173 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.remote.server.rest;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Multimap;
 
-import org.openqa.selenium.WebDriverException;
+import org.openqa.selenium.NoSuchSessionException;
+import org.openqa.selenium.remote.Command;
+import org.openqa.selenium.remote.DriverCommand;
 import org.openqa.selenium.remote.ErrorCodes;
-import org.openqa.selenium.remote.HttpSessionId;
-import org.openqa.selenium.remote.JsonToBeanConverter;
-import org.openqa.selenium.remote.PropertyMunger;
+import org.openqa.selenium.remote.Response;
 import org.openqa.selenium.remote.SessionId;
-import org.openqa.selenium.remote.SessionNotFoundException;
-import org.openqa.selenium.remote.SimplePropertyDescriptor;
 import org.openqa.selenium.remote.UnreachableBrowserException;
 import org.openqa.selenium.remote.server.DriverSessions;
-import org.openqa.selenium.remote.server.HttpRequest;
-import org.openqa.selenium.remote.server.HttpResponse;
-import org.openqa.selenium.remote.server.JsonParametersAware;
+import org.openqa.selenium.remote.server.RequiresAllSessions;
+import org.openqa.selenium.remote.server.RequiresSession;
 import org.openqa.selenium.remote.server.Session;
 import org.openqa.selenium.remote.server.handler.DeleteSession;
 import org.openqa.selenium.remote.server.handler.WebDriverHandler;
 import org.openqa.selenium.remote.server.log.LoggingManager;
 import org.openqa.selenium.remote.server.log.PerSessionLogHandler;
 
-import java.io.BufferedReader;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.lang.reflect.UndeclaredThrowableException;
-import java.util.Collection;
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.RejectedExecutionException;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static com.google.common.base.Preconditions.checkNotNull;
-
 public class ResultConfig {
 
-  private final String[] sections;
+  interface HandlerFactory {
+    RestishHandler<?> createHandler(SessionId sessionId);
+  }
+
+  private final String commandName;
   private final HandlerFactory handlerFactory;
   private final DriverSessions sessions;
-  private final Multimap<ResultType, Result> resultToRender = LinkedHashMultimap.create();
-  private final String url;
   private final Logger log;
 
-  public ResultConfig(String url, Class<? extends RestishHandler> handlerClazz, DriverSessions sessions,
+  public ResultConfig(
+      String commandName, Supplier<RestishHandler<?>> factory,
+      DriverSessions sessions,
       Logger log) {
-    this.url = url;
+    if (commandName == null || factory == null) {
+      throw new IllegalArgumentException("You must specify the handler and the command name");
+    }
+
+    this.commandName = commandName;
     this.log = log;
-    if (url == null || handlerClazz == null) {
-      throw new IllegalArgumentException("You must specify the handler and the url");
-    }
-
-    sections = url.split("/");
     this.sessions = sessions;
-    this.handlerFactory = getHandlerFactory(handlerClazz);
+    this.handlerFactory = (sessionId) -> factory.get();
   }
 
-
-  public RestishHandler getHandler(String url, SessionId sessionId) throws Exception {
-    if (!isFor(url)) {
-      return null;
-    }
-    return populate(handlerFactory.createHandler(sessionId), url);
-  }
-
-  public boolean isFor(String urlToMatch) {
-    if (urlToMatch == null) {
-      return sections.length == 0;
+  public ResultConfig(
+      String commandName, RequiresAllSessions factory,
+      DriverSessions sessions,
+      Logger log) {
+    if (commandName == null || factory == null) {
+      throw new IllegalArgumentException("You must specify the handler and the command name");
     }
 
-    String[] allParts = urlToMatch.split("/");
+    this.commandName = commandName;
+    this.log = log;
+    this.sessions = sessions;
+    this.handlerFactory = (sessionId) -> factory.apply(sessions);
+  }
 
-    if (sections.length != allParts.length) {
-      return false;
+  public ResultConfig(
+      String commandName, RequiresSession factory,
+      DriverSessions sessions,
+      Logger log) {
+    if (commandName == null || factory == null) {
+      throw new IllegalArgumentException("You must specify the handler and the command name");
     }
 
-    for (int i = 0; i < sections.length; i++) {
-      if (!(sections[i].startsWith(":") || sections[i].equals(allParts[i]))) {
-        return false;
-      }
+    this.commandName = commandName;
+    this.log = log;
+    this.sessions = sessions;
+    this.handlerFactory = (sessionId) -> factory.apply(sessions.get(sessionId));
+  }
+
+  public Response handle(Command command) {
+    Response response = new Response();
+    SessionId sessionId = command.getSessionId();
+    if (sessionId != null) {
+      response.setSessionId(sessionId.toString());
     }
 
-    return true;
-  }
-
-  interface HandlerFactory {
-    RestishHandler createHandler(SessionId sessionId) throws Exception;
-  }
-
-
-  protected RestishHandler populate(RestishHandler handler, String pathString) {
-    if (pathString == null) {
-      return handler;
-    }
-
-    String[] strings = pathString.split("/");
-
-    for (int i = 0; i < sections.length; i++) {
-      if (!sections[i].startsWith(":")) {
-        continue;
-      }
-      try {
-        PropertyMunger.set(sections[i].substring(1), handler, strings[i]);
-      } catch (Exception e) {
-        throw new WebDriverException(e);
-      }
-    }
-
-    return handler;
-  }
-
-  /**
-   * Configures this instance to handle a particular type of result with the given renderer. This
-   * result handler will be registered with an empty mime-type.  Accordingly, it will only be used
-   * if there are no other handlers registered with an exact mime-type match.
-   *
-   * @param resultType The type of result to configure.
-   * @param renderer The renderer to use.
-   * @return A self reference for fluency.
-   * @see #on(ResultType, Result)
-   */
-  public ResultConfig on(ResultType resultType, Renderer renderer) {
-    return on(resultType, renderer, "");
-  }
-
-  /*
-   * Configure this ResultConfig to handle results of type ResultType with a specific renderer. The
-   * mimeType is used to distinguish between JSON calls and "ordinary" browser pointed at the remote
-   * WD Server, which is not implemented at all yet.
-   * @see #on(ResultType, Result)
-   */
-  public ResultConfig on(ResultType success, Renderer renderer, String mimeType) {
-    return on(success, new Result(mimeType, renderer));
-  }
-
-  /**
-   * Configures how this instance will handle specific types of results. Each ResultType may be
-   * handled by multiple Results. Upon rendering a response, this instance will select the first
-   * Result that is an exact mime-type match for the original HTTP request (results are checked in
-   * the order registered). There may only be one Result registered for each mime-type.
-   *
-   * @param type The type of result to configure for.
-   * @param result The handler for the given result type.
-   * @return A self reference for fluency.
-   */
-  public ResultConfig on(ResultType type, Result result) {
-    // There should not be more than one renderer for each result and
-    // mime type.
-    for (Result existingResult : resultToRender.get(type)) {
-      assert(!existingResult.isExactMimeTypeMatch(result.getMimeType()));
-    }
-    resultToRender.put(type, result);
-    return this;
-  }
-
-  public void handle(String pathInfo, final HttpRequest request,
-      final HttpResponse response) throws Exception {
-    String sessionId = HttpSessionId.getSessionId(request.getUri());
-    
-    SessionId sessId = sessionId != null ? new SessionId(sessionId) : null;
-
-    ResultType result;
-    throwUpIfSessionTerminated(sessId);
-    final RestishHandler handler = getHandler(pathInfo, sessId);
+    throwUpIfSessionTerminated(sessionId);
+    final RestishHandler<?> handler = handlerFactory.createHandler(sessionId);
 
     try {
-
-      if (handler instanceof JsonParametersAware) {
-        setJsonParameters(request, handler);
+      @SuppressWarnings("unchecked")
+      Map<String, Object> parameters = (Map<String, Object>) command.getParameters();
+      if (parameters != null && !parameters.isEmpty()) {
+        handler.setJsonParameters(parameters);
       }
 
-      request.setAttribute("handler", handler);
+      throwUpIfSessionTerminated(sessionId);
 
-      throwUpIfSessionTerminated(sessId);
+      Consumer<String> logger = DriverCommand.STATUS.equals(command.getName()) ? log::fine : log::info;
 
-      if ("/status".equals(pathInfo)) {
-        log.fine(String.format("Executing: %s at URL: %s)", handler.toString(), pathInfo));
+      logger.accept(String.format("Executing: %s)", handler));
+
+      Object value = handler.handle();
+      if (value instanceof Response) {
+        response = (Response) value;
       } else {
-        log.info(String.format("Executing: %s at URL: %s)", handler.toString(), pathInfo));
+        response.setValue(value);
+        response.setState(ErrorCodes.SUCCESS_STRING);
+        response.setStatus(ErrorCodes.SUCCESS);
       }
-      result = handler.handle();
-      addHandlerAttributesToRequest(request, handler);
-      if ("/status".equals(pathInfo)) {
-        log.fine("Done: " + pathInfo);
-      } else {
-        log.info("Done: " + pathInfo);
-      }
-    } catch (UnreachableBrowserException e){
-      throwUpIfSessionTerminated(sessId);
-      replyError(request, response, e);
-      return;
-    } catch (SessionNotFoundException e){
-      throw e;
+
+      logger.accept("Done: " + handler);
+
+    } catch (UnreachableBrowserException e) {
+      throwUpIfSessionTerminated(sessionId);
+      return Responses.failure(sessionId, e);
+
     } catch (Exception e) {
-      result = ResultType.EXCEPTION;
       log.log(Level.WARNING, "Exception thrown", e);
 
       Throwable toUse = getRootExceptionCause(e);
 
       log.warning("Exception: " + toUse.getMessage());
-      request.setAttribute("exception", toUse);
+      Optional<String> screenshot = Optional.empty();
       if (handler instanceof WebDriverHandler) {
-        request.setAttribute("screen", ((WebDriverHandler) handler).getScreenshot());
+        screenshot = Optional.ofNullable(((WebDriverHandler<?>) handler).getScreenshot());
       }
+      response = Responses.failure(sessionId, toUse, screenshot);
     } catch (Error e) {
       log.info("Error: " + e.getMessage());
-      result = ResultType.EXCEPTION;
-      request.setAttribute("exception", e);
+      response = Responses.failure(sessionId, e);
     }
 
-    final Renderer renderer = getRenderer(result, request);
-
-    if (handler instanceof WebDriverHandler) {
-      FutureTask<ResultType> task = new FutureTask<ResultType>(new Callable<ResultType>() {
-        public ResultType call() throws Exception {
-          renderer.render(request, response, handler);
-          response.end();
-          return null;
-        }
-      });
-
-      try {
-      ((WebDriverHandler) handler).execute(task);
-      task.get();
-      } catch (RejectedExecutionException e){
-        throw new SessionNotFoundException();
-      }
-
-      if (handler instanceof DeleteSession) {
-        // Yes, this is funky. See javadoc on cleatThreadTempLogs for details.
-        final PerSessionLogHandler logHandler = LoggingManager.perSessionLogHandler();
-        logHandler.transferThreadTempLogsToSessionLogs(sessId);
-        logHandler.removeSessionLogs(sessId);
-        sessions.deleteSession(sessId);
-      }
-
-
-    } else {
-      renderer.render(request, response, handler);
-      response.end();
+    if (handler instanceof DeleteSession) {
+      // Yes, this is funky. See javadoc on cleatThreadTempLogs for details.
+      final PerSessionLogHandler logHandler = LoggingManager.perSessionLogHandler();
+      logHandler.transferThreadTempLogsToSessionLogs(sessionId);
+      logHandler.removeSessionLogs(sessionId);
     }
+    return response;
   }
 
-  private void replyError(HttpRequest request, final HttpResponse response, Exception e)
-      throws Exception {
-    Renderer renderer2 = getRenderer(ResultType.EXCEPTION, request);
-    request.setAttribute("exception",  e);
-    renderer2.render(request, response, null);
-  }
-
-  private void throwUpIfSessionTerminated(SessionId sessId) throws Exception {
+  private void throwUpIfSessionTerminated(SessionId sessId) throws NoSuchSessionException {
     if (sessId == null) return;
     Session session = sessions.get(sessId);
     final boolean isTerminated = session == null;
-    if (isTerminated){
-      throw new SessionNotFoundException();
-    }
-  }
-
-  @VisibleForTesting
-  Renderer getRenderer(ResultType resultType, HttpRequest request) {
-    Collection<Result> results = checkNotNull(resultToRender.get(resultType));
-    Result tempToUse = null;
-    for (Result res : results) {
-      if (tempToUse == null && !res.isOnlyForExactMatch()
-          || res.isExactMimeTypeMatch(request.getHeader("Accept"))) {
-        tempToUse = res;
-      }
-    }
-    return checkNotNull(tempToUse).getRenderer();
-  }
-
-  @SuppressWarnings("unchecked")
-  private void setJsonParameters(HttpRequest request, RestishHandler handler) throws Exception {
-    BufferedReader reader = new BufferedReader(request.getReader());
-    StringBuilder builder = new StringBuilder();
-    for (String line = reader.readLine(); line != null; line = reader.readLine())
-      builder.append(line);
-
-    String raw = builder.toString();
-    if (raw.length() > 0) {
-      Map<String, Object> parameters = (Map<String, Object>) new JsonToBeanConverter()
-          .convert(HashMap.class, builder.toString());
-
-      ((JsonParametersAware) handler).setJsonParameters(parameters);
-    }
-  }
-
-  protected void addHandlerAttributesToRequest(HttpRequest request, RestishHandler handler)
-      throws Exception {
-    SimplePropertyDescriptor[] properties =
-        SimplePropertyDescriptor.getPropertyDescriptors(handler.getClass());
-    for (SimplePropertyDescriptor property : properties) {
-      Method readMethod = property.getReadMethod();
-      if (readMethod == null) {
-        continue;
-      }
-
-      Object result = readMethod.invoke(handler);
-      request.setAttribute(property.getName(), result);
+    if (isTerminated) {
+      throw new NoSuchSessionException();
     }
   }
 
@@ -338,7 +184,7 @@ public class ResultConfig {
     // exception as the one to return to the client. That is the most
     // likely to contain informative data about the error.
     // This is a safety measure to make sure this loop is never endless
-    List<Throwable> chain = Lists.newArrayListWithExpectedSize(10);
+    List<Throwable> chain = new ArrayList<>(10);
     for (Throwable current = toReturn; current != null && chain.size() < 10; current =
         current.getCause()) {
       chain.add(current);
@@ -365,42 +211,6 @@ public class ResultConfig {
     return ec.isMappableError(nextCause) ? nextCause : rootCause;
   }
 
-  private HandlerFactory getHandlerFactory(Class<? extends RestishHandler> handlerClazz) {
-    final Constructor<? extends RestishHandler> sessionAware = getConstructor(handlerClazz, Session.class);
-    if (sessionAware != null) return new HandlerFactory() {
-      public RestishHandler createHandler(SessionId sessionId) throws Exception {
-        return sessionAware.newInstance(sessionId != null ? sessions.get(sessionId) : null);
-      }
-    };
-
-    final Constructor<? extends RestishHandler> driverSessions =
-        getConstructor(handlerClazz, DriverSessions.class);
-    if (driverSessions != null) return new HandlerFactory() {
-      public RestishHandler createHandler(SessionId sessionId) throws Exception {
-        return driverSessions.newInstance(sessions);
-      }
-    };
-
-
-    final Constructor<? extends RestishHandler> norags = getConstructor(handlerClazz);
-    if (norags != null) return new HandlerFactory() {
-      public RestishHandler createHandler(SessionId sessionId) throws Exception {
-        return norags.newInstance();
-      }
-    };
-
-    throw new IllegalArgumentException("Don't know how to construct " + handlerClazz);
-  }
-
-  private static Constructor<? extends RestishHandler> getConstructor(
-      Class<? extends RestishHandler> handlerClazz, Class... types) {
-    try {
-      return handlerClazz.getConstructor(types);
-    } catch (NoSuchMethodException e) {
-      return null;
-    }
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -412,12 +222,11 @@ public class ResultConfig {
 
     ResultConfig that = (ResultConfig) o;
 
-    return url.equals(that.url);
-
+    return commandName.equals(that.commandName);
   }
 
   @Override
   public int hashCode() {
-    return url.hashCode();
+    return commandName.hashCode();
   }
 }

@@ -1,82 +1,68 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.support.ui;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 import org.junit.Test;
+
+import java.time.Clock;
+import java.time.Duration;
 
 public class SlowLoadableComponentTest {
 
   @Test
   public void testShouldDoNothingIfComponentIsAlreadyLoaded() {
-    try {
-      new DetonatingSlowLoader().get();
-    } catch (RuntimeException e) {
-      fail("Did not expect load to be called");
-    }
+    new DetonatingSlowLoader().get();
   }
 
   @Test
   public void testShouldCauseTheLoadMethodToBeCalledIfTheComponentIsNotAlreadyLoaded() {
     int numberOfTimesThroughLoop = 1;
-    SlowLoading slowLoading = new SlowLoading(new SystemClock(), 1, numberOfTimesThroughLoop).get();
+    SlowLoading slowLoading = new SlowLoading(
+        Clock.systemDefaultZone(), 1, numberOfTimesThroughLoop).get();
 
-    assertEquals(numberOfTimesThroughLoop, slowLoading.getLoopCount());
+    assertThat(slowLoading.getLoopCount()).isEqualTo(numberOfTimesThroughLoop);
   }
 
   @Test
   public void testTheLoadMethodShouldOnlyBeCalledOnceIfTheComponentTakesALongTimeToLoad() {
-    try {
-      new OnlyOneLoad(new SystemClock(), 5, 5).get();
-    } catch (RuntimeException e) {
-      fail("Did not expect load to be called more than once");
-    }
+    new OnlyOneLoad(Clock.systemDefaultZone(), 5, 5).get();
   }
 
   @Test
   public void testShouldThrowAnErrorIfCallingLoadDoesNotCauseTheComponentToLoadBeforeTimeout() {
-    FakeClock clock = new FakeClock();
-    try {
-      new BasicSlowLoader(clock, 2).get();
-      fail();
-    } catch (Error e) {
-      // We expect to time out
-    }
+    TickingClock clock = new TickingClock();
+    assertThatExceptionOfType(Error.class).isThrownBy(() -> new BasicSlowLoader(clock, 2).get());
   }
 
   @Test
   public void testShouldCancelLoadingIfAnErrorIsDetected() {
     HasError error = new HasError();
-
-    try {
-      error.get();
-      fail();
-    } catch (CustomError e) {
-      // This is expected
-    }
+    assertThatExceptionOfType(CustomError.class).isThrownBy(error::get);
   }
 
 
   private static class DetonatingSlowLoader extends SlowLoadableComponent<DetonatingSlowLoader> {
 
     public DetonatingSlowLoader() {
-      super(new SystemClock(), 1);
+      super(Clock.systemDefaultZone(), 1);
     }
 
     @Override
@@ -138,10 +124,9 @@ public class SlowLoadableComponentTest {
 
   private static class BasicSlowLoader extends SlowLoadableComponent<BasicSlowLoader> {
 
-    private final FakeClock clock;
-    private final static int MILLIS_IN_A_SECOND = 1000;
+    private final TickingClock clock;
 
-    public BasicSlowLoader(FakeClock clock, int timeOutInSeconds) {
+    public BasicSlowLoader(TickingClock clock, int timeOutInSeconds) {
       super(clock, timeOutInSeconds);
       this.clock = clock;
     }
@@ -155,7 +140,7 @@ public class SlowLoadableComponentTest {
     protected void isLoaded() throws Error {
       // Cheat and increment the clock here, because otherwise it's hard to
       // get to.
-      clock.timePasses(MILLIS_IN_A_SECOND);
+      clock.sleep(Duration.ofSeconds(1));
       throw new Error(); // Never loads
     }
   }
@@ -163,7 +148,7 @@ public class SlowLoadableComponentTest {
   private static class HasError extends SlowLoadableComponent<HasError> {
 
     public HasError() {
-      super(new FakeClock(), 1000);
+      super(new TickingClock(), 1000);
     }
 
     @Override
@@ -173,7 +158,7 @@ public class SlowLoadableComponentTest {
 
     @Override
     protected void isLoaded() throws Error {
-      fail();
+      throw new AssertionError();
     }
 
     @Override

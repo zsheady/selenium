@@ -1,23 +1,25 @@
-// Copyright 2010 WebDriver committers
-// Copyright 2010 Google Inc.
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 goog.provide('bot.locators.className');
 
-goog.require('goog.array');
+goog.require('bot.Error');
+goog.require('bot.ErrorCode');
 goog.require('goog.dom');
-goog.require('goog.dom.DomHelper');
 goog.require('goog.string');
 
 
@@ -45,18 +47,25 @@ bot.locators.className.canUseQuerySelector_ = function(root) {
  */
 bot.locators.className.single = function(target, root) {
   if (!target) {
-    throw Error('No class name specified');
+    throw new bot.Error(bot.ErrorCode.INVALID_SELECTOR_ERROR,
+                        'No class name specified');
   }
 
   target = goog.string.trim(target);
-  if (target.split(/\s+/).length > 1) {
-    throw Error('Compound class names not permitted');
+  if (target.indexOf(' ') !== -1) {
+    throw new bot.Error(bot.ErrorCode.INVALID_SELECTOR_ERROR,
+                        'Compound class names not permitted');
   }
 
   // Closure will not properly escape class names that contain a '.' when using
   // the native selectors API, so we have to handle this ourselves.
   if (bot.locators.className.canUseQuerySelector_(root)) {
-    return root.querySelector('.' + target.replace(/\./g, '\\.')) || null;
+    try {
+      return root.querySelector('.' + target.replace(/\./g, '\\.')) || null;
+    } catch (e) {
+      throw new bot.Error(bot.ErrorCode.INVALID_SELECTOR_ERROR,
+                          'An invalid or illegal class name was specified');
+    }
   }
   var elements = goog.dom.getDomHelper(root).getElementsByTagNameAndClass(
       /*tagName=*/'*', /*className=*/target, root);
@@ -69,22 +78,29 @@ bot.locators.className.single = function(target, root) {
  * @param {string} target The class name to search for.
  * @param {!(Document|Element)} root The document or element to perform the
  *     search under.
- * @return {!goog.array.ArrayLike} All matching elements, or an empty list.
+ * @return {!IArrayLike} All matching elements, or an empty list.
  */
 bot.locators.className.many = function(target, root) {
   if (!target) {
-    throw Error('No class name specified');
+    throw new bot.Error(bot.ErrorCode.INVALID_SELECTOR_ERROR,
+                        'No class name specified');
   }
 
   target = goog.string.trim(target);
-  if (target.split(/\s+/).length > 1) {
-    throw Error('Compound class names not permitted');
+  if (target.indexOf(' ') !== -1) {
+    throw new bot.Error(bot.ErrorCode.INVALID_SELECTOR_ERROR,
+                        'Compound class names not permitted');
   }
 
   // Closure will not properly escape class names that contain a '.' when using
   // the native selectors API, so we have to handle this ourselves.
   if (bot.locators.className.canUseQuerySelector_(root)) {
-    return root.querySelectorAll('.' + target.replace(/\./g, '\\.'));
+    try {
+      return root.querySelectorAll('.' + target.replace(/\./g, '\\.'));
+    } catch (e) {
+      throw new bot.Error(bot.ErrorCode.INVALID_SELECTOR_ERROR,
+                          'An invalid or illegal class name was specified');
+    }
   }
   return goog.dom.getDomHelper(root).getElementsByTagNameAndClass(
       /*tagName=*/'*', /*className=*/target, root);

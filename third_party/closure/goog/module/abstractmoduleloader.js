@@ -19,6 +19,9 @@
 
 goog.provide('goog.module.AbstractModuleLoader');
 
+/** @suppress {extraRequire} */
+goog.require('goog.module');
+goog.require('goog.module.ModuleInfo');
 
 
 /**
@@ -31,7 +34,7 @@ goog.module.AbstractModuleLoader = function() {};
 /**
  * Loads a list of JavaScript modules.
  *
- * @param {Array.<string>} ids The module ids in dependency order.
+ * @param {Array<string>} ids The module ids in dependency order.
  * @param {Object} moduleInfoMap A mapping from module id to ModuleInfo object.
  * @param {function()?=} opt_successFn The callback if module loading is a
  *     success.

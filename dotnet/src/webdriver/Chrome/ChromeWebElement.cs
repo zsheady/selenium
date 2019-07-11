@@ -1,9 +1,9 @@
 // <copyright file="ChromeWebElement.cs" company="WebDriver Committers">
-// Copyright 2007-2011 WebDriver committers
-// Copyright 2007-2011 Google Inc.
-// Portions copyright 2011 Software Freedom Conservancy
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -16,24 +16,17 @@
 // limitations under the License.
 // </copyright>
 
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Drawing;
-using System.Globalization;
-using OpenQA.Selenium.Internal;
-using OpenQA.Selenium.Remote;
+using OpenQA.Selenium.Chromium;
 
 namespace OpenQA.Selenium.Chrome
 {
     /// <summary>
     /// Provides a mechanism to get elements off the page for test
     /// </summary>
-    public class ChromeWebElement : RemoteWebElement
+    public class ChromeWebElement : ChromiumWebElement
     {
-        #region Constructor
         /// <summary>
-        /// Initializes a new instance of the ChromeWebElement class
+        /// Initializes a new instance of the <see cref="ChromeWebElement"/> class.
         /// </summary>
         /// <param name="parent">Driver in use</param>
         /// <param name="elementId">Id of the element</param>
@@ -41,6 +34,5 @@ namespace OpenQA.Selenium.Chrome
             : base(parent, elementId)
         {
         }
-        #endregion
     }
 }

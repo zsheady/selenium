@@ -1,17 +1,19 @@
-// Copyright 2010 WebDriver committers
-// Copyright 2010 Google Inc.
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 /**
  * @fileoverview Functions to do with firing and simulating events.
@@ -34,6 +36,7 @@ goog.require('bot.ErrorCode');
 goog.require('bot.userAgent');
 goog.require('goog.array');
 goog.require('goog.dom');
+goog.require('goog.events.BrowserEvent');
 goog.require('goog.style');
 goog.require('goog.userAgent');
 goog.require('goog.userAgent.product');
@@ -46,8 +49,7 @@ goog.require('goog.userAgent.product');
  * @type {boolean}
  */
 bot.events.SUPPORTS_TOUCH_EVENTS = !(goog.userAgent.IE &&
-                                     !bot.userAgent.isEngineVersion(10)) &&
-                                   !goog.userAgent.OPERA;
+                                     !bot.userAgent.isEngineVersion(10));
 
 
 /**
@@ -218,7 +220,7 @@ bot.events.EventFactory_.prototype.create = function(target, opt_args) {
   var doc = goog.dom.getOwnerDocument(target);
   var event;
 
-  if (bot.userAgent.IE_DOC_PRE9) {
+  if (bot.userAgent.IE_DOC_PRE9 && doc.createEventObject) {
     event = doc.createEventObject();
   } else {
     event = doc.createEvent('HTMLEvents');
@@ -234,6 +236,7 @@ bot.events.EventFactory_.prototype.create = function(target, opt_args) {
  * and it allows event types to be mapped in JS objects without collisions.
  *
  * @return {string} String representation of the event type.
+ * @override
  */
 bot.events.EventFactory_.prototype.toString = function() {
   return this.type_;
@@ -334,13 +337,13 @@ bot.events.MouseEventFactory_.prototype.create = function(target, opt_args) {
     // All browser but Firefox provide the wheelDelta value in the event.
     // Firefox provides the scroll amount in the detail field, where it has the
     // opposite polarity of the wheelDelta (upward scroll is negative) and is a
-    // factor of 40 less than the wheelDelta value. Opera provides both values.
+    // factor of 40 less than the wheelDelta value.
     // The wheelDelta value is normally some multiple of 40.
     if (this == bot.events.EventType.MOUSEWHEEL) {
       if (!goog.userAgent.GECKO) {
         event.wheelDelta = args.wheelDelta;
       }
-      if (goog.userAgent.GECKO || goog.userAgent.OPERA) {
+      if (goog.userAgent.GECKO) {
         detail = args.wheelDelta / -40;
       }
     }
@@ -424,7 +427,7 @@ bot.events.KeyboardEventFactory_.prototype.create = function(target, opt_args) {
   } else {
     if (bot.userAgent.IE_DOC_PRE9) {
       event = doc.createEventObject();
-    } else {  // WebKit, Opera, and IE 9+ in Standards mode.
+    } else {  // WebKit and IE 9+ in Standards mode.
       event = doc.createEvent('Events');
       event.initEvent(this.type_, this.bubbles_, this.cancelable_);
     }
@@ -433,13 +436,26 @@ bot.events.KeyboardEventFactory_.prototype.create = function(target, opt_args) {
     event.metaKey = args.metaKey;
     event.shiftKey = args.shiftKey;
     event.keyCode = args.charCode || args.keyCode;
-    if (goog.userAgent.WEBKIT) {
+    if (goog.userAgent.WEBKIT || goog.userAgent.EDGE) {
       event.charCode = (this == bot.events.EventType.KEYPRESS) ?
           event.keyCode : 0;
     }
   }
 
   return event;
+};
+
+
+
+/**
+ * Enum representing which mechanism to use for creating touch events.
+ * @enum {number}
+ * @private
+ */
+bot.events.TouchEventStrategy_ = {
+  MOUSE_EVENTS: 1,
+  INIT_TOUCH_EVENT: 2,
+  TOUCH_EVENT_CTOR: 3
 };
 
 
@@ -505,22 +521,61 @@ bot.events.TouchEventFactory_.prototype.create = function(target, opt_args) {
     return touches;
   }
 
-  function createTouchList(touches) {
-    return bot.events.BROKEN_TOUCH_API_ ?
-        createGenericTouchList(touches) :
-        createNativeTouchList(touches);
+  function createTouchEventTouchList(touchListArgs) {
+    /** @type {!Array<!Touch>} */
+    var touches = goog.array.map(touchListArgs, function(touchArg) {
+      return new Touch({
+        identifier: touchArg.identifier,
+        screenX: touchArg.screenX,
+        screenY: touchArg.screenY,
+        clientX: touchArg.clientX,
+        clientY: touchArg.clientY,
+        pageX: touchArg.pageX,
+        pageY: touchArg.pageY,
+        target: target
+      });
+    });
+    return touches;
+  }
+
+  function createTouchList(touchStrategy, touches) {
+    switch (touchStrategy) {
+    case bot.events.TouchEventStrategy_.MOUSE_EVENTS:
+      return createGenericTouchList(touches);
+    case bot.events.TouchEventStrategy_.INIT_TOUCH_EVENT:
+      return createNativeTouchList(touches);
+    case bot.events.TouchEventStrategy_.TOUCH_EVENT_CTOR:
+      return createTouchEventTouchList(touches);
+    }
+    return null;
+  }
+
+  // TODO(juangj): Always use the TouchEvent constructor, if available.
+  var strategy;
+  if (bot.events.BROKEN_TOUCH_API_) {
+    strategy = bot.events.TouchEventStrategy_.MOUSE_EVENTS;
+  } else {
+    if (TouchEvent.prototype.initTouchEvent) {
+      strategy = bot.events.TouchEventStrategy_.INIT_TOUCH_EVENT;
+    } else if (TouchEvent && TouchEvent.length > 0) {
+      strategy = bot.events.TouchEventStrategy_.TOUCH_EVENT_CTOR;
+    } else {
+      throw new bot.Error(
+          bot.ErrorCode.UNSUPPORTED_OPERATION,
+          'Not able to create touch events in this browser');
+    }
   }
 
   // As a performance optimization, reuse the created touchlist when the lists
   // are the same, which is often the case in practice.
-  var changedTouches = createTouchList(args.changedTouches);
+  var changedTouches = createTouchList(strategy, args.changedTouches);
   var touches = (args.touches == args.changedTouches) ?
-      changedTouches : createTouchList(args.touches);
+      changedTouches : createTouchList(strategy, args.touches);
   var targetTouches = (args.targetTouches == args.changedTouches) ?
-      changedTouches : createTouchList(args.targetTouches);
+      changedTouches : createTouchList(strategy, args.targetTouches);
 
   var event;
-  if (bot.events.BROKEN_TOUCH_API_) {
+  if (strategy == bot.events.TouchEventStrategy_.MOUSE_EVENTS) {
     event = doc.createEvent('MouseEvents');
     event.initMouseEvent(this.type_, this.bubbles_, this.cancelable_, view,
         /*detail*/ 1, /*screenX*/ 0, /*screenY*/ 0, args.clientX, args.clientY,
@@ -531,20 +586,39 @@ bot.events.TouchEventFactory_.prototype.create = function(target, opt_args) {
     event.changedTouches = changedTouches;
     event.scale = args.scale;
     event.rotation = args.rotation;
-  } else {
+  } else if (strategy == bot.events.TouchEventStrategy_.INIT_TOUCH_EVENT) {
     event = doc.createEvent('TouchEvent');
-    if (goog.userAgent.product.ANDROID) {
-      // Android's initTouchEvent method is not compliant with the W3C spec.
+    // Different browsers have different implementations of initTouchEvent.
+    if (event.initTouchEvent.length == 0) {
+      // Chrome/Android.
       event.initTouchEvent(touches, targetTouches, changedTouches,
           this.type_, view, /*screenX*/ 0, /*screenY*/ 0, args.clientX,
           args.clientY, args.ctrlKey, args.altKey, args.shiftKey, args.metaKey);
     } else {
+      // iOS.
       event.initTouchEvent(this.type_, this.bubbles_, this.cancelable_, view,
           /*detail*/ 1, /*screenX*/ 0, /*screenY*/ 0, args.clientX,
           args.clientY, args.ctrlKey, args.altKey, args.shiftKey, args.metaKey,
           touches, targetTouches, changedTouches, args.scale, args.rotation);
     }
     event.relatedTarget = args.relatedTarget;
+  } else if (strategy == bot.events.TouchEventStrategy_.TOUCH_EVENT_CTOR) {
+    var touchProperties = /** @type {!TouchEventInit} */ ({
+      touches: touches,
+      targetTouches: targetTouches,
+      changedTouches: changedTouches,
+      bubbles: this.bubbles_,
+      cancelable: this.cancelable_,
+      ctrlKey: args.ctrlKey,
+      shiftKey: args.shiftKey,
+      altKey: args.altKey,
+      metaKey: args.metaKey
+    });
+    event = new TouchEvent(this.type_, touchProperties);
+  } else {
+    throw new bot.Error(
+        bot.ErrorCode.UNSUPPORTED_OPERATION,
+        'Illegal TouchEventStrategy_ value (this is a bug)');
   }
 
   return event;
@@ -651,7 +725,7 @@ bot.events.MSPointerEventFactory_.prototype.create = function(target,
  * http://en.wikipedia.org/wiki/DOM_events and
  * http://www.w3.org/Submission/pointer-events/#pointer-event-types
  *
- * @enum {!Object}
+ * @enum {!bot.events.EventFactory_}
  */
 bot.events.EventType = {
   BLUR: new bot.events.EventFactory_('blur', false, false),
@@ -743,7 +817,7 @@ bot.events.fire = function(target, type, opt_args) {
     event['isTrusted'] = false;
   }
 
-  if (bot.userAgent.IE_DOC_PRE9) {
+  if (bot.userAgent.IE_DOC_PRE9 && target.fireEvent) {
     return target.fireEvent('on' + factory.type_, event);
   } else {
     return target.dispatchEvent(event);

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+using System;
 using NUnit.Framework;
 using OpenQA.Selenium.Internal;
 
@@ -11,48 +10,62 @@ namespace OpenQA.Selenium
         [Test]
         public void CanCreateAWellFormedCookie()
         {
-            new ReturnedCookie("Fish", "cod", "", "", DateTime.Now, false, new Uri("http://localhost"));
+            new ReturnedCookie("Fish", "cod", "", "", DateTime.Now, false, false);
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException))]
         public void ShouldThrowAnExceptionWhenSemiColonExistsInTheCookieAttribute()
         {
-            new ReturnedCookie("hi;hi", "value", null, null, DateTime.Now, false, new Uri("http://localhost"));
+            Assert.That(() => new ReturnedCookie("hi;hi", "value", null, null, DateTime.Now, false, false), Throws.InstanceOf<ArgumentException>());
         }
 
         [Test]
-        [ExpectedException(typeof(ArgumentException))]
         public void ShouldThrowAnExceptionWhenTheNameIsNull()
         {
-            new ReturnedCookie(null, "value", null, null, DateTime.Now, false, new Uri("http://localhost"));
-        }
-
-        [Test]
-        [ExpectedException(typeof(ArgumentNullException))]
-        public void ShouldThrowAnExceptionWhenTheValueIsNull()
-        {
-            new ReturnedCookie("name", null, null, null, DateTime.Now, false, new Uri("http://localhost"));
+            Assert.That(() => new ReturnedCookie(null, "value", null, null, DateTime.Now, false, false), Throws.InstanceOf<ArgumentException>());
         }
 
         [Test]
         public void CookiesShouldAllowSecureToBeSet()
         {
-            Cookie cookie = new ReturnedCookie("name", "value", "", "/", DateTime.Now, true, new Uri("http://localhost"));
-            Assert.IsTrue(cookie.Secure);
+            Cookie cookie = new ReturnedCookie("name", "value", "", "/", DateTime.Now, true, false);
+            Assert.That(cookie.Secure, Is.True);
+        }
+
+        [Test]
+        public void SecureDefaultsToFalse()
+        {
+            Cookie cookie = new Cookie("name", "value");
+            Assert.That(cookie.Secure, Is.False);
+        }
+
+        [Test]
+        public void CookiesShouldAllowHttpOnlyToBeSet()
+        {
+            Cookie cookie = new ReturnedCookie("name", "value", "", "/", DateTime.Now, false, true);
+            Assert.That(cookie.IsHttpOnly, Is.True);
+        }
+
+        [Test]
+        public void HttpOnlyDefaultsToFalse()
+        {
+            Cookie cookie = new Cookie("name", "value");
+            Assert.That(cookie.IsHttpOnly, Is.False);
+        }
+
+        //------------------------------------------------------------------
+        // Tests below here are not included in the Java test suite
+        //------------------------------------------------------------------
+        [Test]
+        public void ShouldThrowAnExceptionWhenTheValueIsNull()
+        {
+            Assert.That(() => new ReturnedCookie("name", null, null, null, DateTime.Now, false, false), Throws.InstanceOf<ArgumentNullException>());
         }
 
         [Test]
         public void ShouldAllowExpiryToBeNull()
         {
-            Cookie cookie = new ReturnedCookie("name", "value", "", "/", null, false, new Uri("http://localhost"));
-        }
-
-        [Test]
-        [ExpectedException(typeof(ArgumentNullException))]
-        public void ShouldThrowAnExceptionWhenUriOfReturnedCookieIsNull()
-        {
-            Cookie cookie = new ReturnedCookie("name", "value", "", "/", null, false, null);
+            Cookie cookie = new ReturnedCookie("name", "value", "", "/", null, false, false);
         }
     }
 }

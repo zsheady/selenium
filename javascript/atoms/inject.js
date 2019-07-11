@@ -1,17 +1,19 @@
-// Copyright 2010 WebDriver committers
-// Copyright 2010 Google Inc.
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 /**
  * @fileoverview Browser atom for injecting JavaScript into the page under
@@ -37,13 +39,34 @@ goog.require('bot.response.ResponseObject');
 goog.require('goog.array');
 goog.require('goog.dom.NodeType');
 goog.require('goog.object');
+goog.require('goog.userAgent');
+
+
+/**
+ * Type definition for the WebDriver's JSON wire protocol representation
+ * of a DOM element.
+ * @typedef {{ELEMENT: string}}
+ * @see bot.inject.ELEMENT_KEY
+ * @see https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol
+ */
+bot.inject.JsonElement;
+
+
+/**
+ * Type definition for a cached Window object that can be referenced in
+ * WebDriver's JSON wire protocol. Note, this is a non-standard
+ * representation.
+ * @typedef {{WINDOW: string}}
+ * @see bot.inject.WINDOW_KEY
+ */
+bot.inject.JsonWindow;
 
 
 /**
  * Key used to identify DOM elements in the WebDriver wire protocol.
  * @type {string}
  * @const
- * @see http://code.google.com/p/selenium/wiki/JsonWireProtocol
+ * @see https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol
  */
 bot.inject.ELEMENT_KEY = 'ELEMENT';
 
@@ -74,67 +97,75 @@ bot.inject.WINDOW_KEY = 'WINDOW';
  *
  * @param {*} value The value to make JSON friendly.
  * @return {*} The JSON friendly value.
- * @see http://code.google.com/p/selenium/wiki/JsonWireProtocol
+ * @see https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol
  */
 bot.inject.wrapValue = function(value) {
-  switch (goog.typeOf(value)) {
-    case 'string':
-    case 'number':
-    case 'boolean':
-      return value;
+  var _wrap = function(value, seen) {
+    switch (goog.typeOf(value)) {
+      case 'string':
+      case 'number':
+      case 'boolean':
+        return value;
 
-    case 'function':
-      return value.toString();
+      case 'function':
+        return value.toString();
 
-    case 'array':
-      return goog.array.map(/**@type {goog.array.ArrayLike}*/ (value),
-          bot.inject.wrapValue);
+      case 'array':
+        return goog.array.map(/**@type {IArrayLike}*/ (value),
+                              function(v) { return _wrap(v, seen); });
 
-    case 'object':
-      // Since {*} expands to {Object|boolean|number|string|undefined}, the
-      // JSCompiler complains that it is too broad a type for the remainder of
-      // this block where {!Object} is expected. Downcast to prevent generating
-      // a ton of compiler warnings.
-      value = /**@type {!Object}*/ (value);
+      case 'object':
+        // Since {*} expands to {Object|boolean|number|string|undefined}, the
+        // JSCompiler complains that it is too broad a type for the remainder of
+        // this block where {!Object} is expected. Downcast to prevent generating
+        // a ton of compiler warnings.
+        value = /**@type {!Object}*/ (value);
+        if (seen.indexOf(value) >= 0) {
+          throw new bot.Error(bot.ErrorCode.JAVASCRIPT_ERROR,
+            'Recursive object cannot be transferred');
+        }
 
-      // Sniff out DOM elements. We're using duck-typing instead of an
-      // instanceof check since the instanceof might not always work
-      // (e.g. if the value originated from another Firefox component)
-      if (goog.object.containsKey(value, 'nodeType') &&
-          (value['nodeType'] == goog.dom.NodeType.ELEMENT ||
-           value['nodeType'] == goog.dom.NodeType.DOCUMENT)) {
-        var ret = {};
-        ret[bot.inject.ELEMENT_KEY] =
+        // Sniff out DOM elements. We're using duck-typing instead of an
+        // instanceof check since the instanceof might not always work
+        // (e.g. if the value originated from another Firefox component)
+        if (goog.object.containsKey(value, 'nodeType') &&
+            (value['nodeType'] == goog.dom.NodeType.ELEMENT ||
+             value['nodeType'] == goog.dom.NodeType.DOCUMENT)) {
+          var ret = {};
+          ret[bot.inject.ELEMENT_KEY] =
             bot.inject.cache.addElement(/**@type {!Element}*/ (value));
-        return ret;
-      }
+          return ret;
+        }
 
-      // Check if this is a Window
-      if (goog.object.containsKey(value, 'document')) {
-        var ret = {};
-        ret[bot.inject.WINDOW_KEY] =
+        // Check if this is a Window
+        if (goog.object.containsKey(value, 'document')) {
+          var ret = {};
+          ret[bot.inject.WINDOW_KEY] =
             bot.inject.cache.addElement(/**@type{!Window}*/ (value));
-        return ret;
-      }
+          return ret;
+        }
 
-      if (goog.isArrayLike(value)) {
-        return goog.array.map(/**@type {goog.array.ArrayLike}*/ (value),
-            bot.inject.wrapValue);
-      }
+        seen.push(value);
+        if (goog.isArrayLike(value)) {
+          return goog.array.map(/**@type {IArrayLike}*/ (value),
+                                function(v) { return _wrap(v, seen); });
+        }
 
-      var filtered = goog.object.filter(value, function(val, key) {
-        return goog.isNumber(key) || goog.isString(key);
-      });
-      return goog.object.map(filtered, bot.inject.wrapValue);
+        var filtered = goog.object.filter(value, function(val, key) {
+          return goog.isNumber(key) || goog.isString(key);
+        });
+        return goog.object.map(filtered, function(v) { return _wrap(v, seen); });
 
-    default:  // goog.typeOf(value) == 'undefined' || 'null'
-      return null;
-  }
+      default:  // goog.typeOf(value) == 'undefined' || 'null'
+        return null;
+    }
+  };
+  return _wrap(value, []);
 };
 
 
 /**
- * Unwraps any DOM element's encoded in the given {@code value}.
+ * Unwraps any DOM element's encoded in the given `value`.
  * @param {*} value The value to unwrap.
  * @param {Document=} opt_doc The document whose cache to retrieve wrapped
  *     elements from. Defaults to the current document.
@@ -142,7 +173,7 @@ bot.inject.wrapValue = function(value) {
  */
 bot.inject.unwrapValue = function(value, opt_doc) {
   if (goog.isArray(value)) {
-    return goog.array.map(/**@type {goog.array.ArrayLike}*/ (value),
+    return goog.array.map(/**@type {IArrayLike}*/ (value),
         function(v) { return bot.inject.unwrapValue(v, opt_doc); });
   } else if (goog.isObject(value)) {
     if (typeof value == 'function') {
@@ -168,10 +199,10 @@ bot.inject.unwrapValue = function(value, opt_doc) {
 
 
 /**
- * Recompiles {@code fn} in the context of another window so that the
+ * Recompiles `fn` in the context of another window so that the
  * correct symbol table is used when the function is executed. This
- * function assumes the {@code fn} can be decompiled to its source using
- * {@code Function.prototype.toString} and that it only refers to symbols
+ * function assumes the `fn` can be decompiled to its source using
+ * `Function.prototype.toString` and that it only refers to symbols
  * defined in the target window's context.
  *
  * @param {!(Function|string)} fn Either the function that shold be
@@ -183,7 +214,17 @@ bot.inject.unwrapValue = function(value, opt_doc) {
  */
 bot.inject.recompileFunction_ = function(fn, theWindow) {
   if (goog.isString(fn)) {
-    return new theWindow['Function'](fn);
+    try {
+      return new theWindow['Function'](fn);
+    } catch (ex) {
+      // Try to recover if in IE5-quirks mode
+      // Need to initialize the script engine on the passed-in window
+      if (goog.userAgent.IE && theWindow.execScript) {
+        theWindow.execScript(';');
+        return new theWindow['Function'](fn);
+      }
+      throw ex;
+    }
   }
   return theWindow == window ? fn : new theWindow['Function'](
       'return (' + fn + ').apply(null,arguments);');
@@ -215,7 +256,7 @@ bot.inject.recompileFunction_ = function(fn, theWindow) {
  * @param {!(Function|string)} fn Either the function to execute, or a string
  *     defining the body of an anonymous function that should be executed. This
  *     function should only contain references to symbols defined in the context
- *     of the target window ({@code opt_window}). Any references to symbols
+ *     of the target window (`opt_window`). Any references to symbols
  *     defined in this context will likely generate a ReferenceError.
  * @param {Array.<*>} args An array of wrapped script arguments, as defined by
  *     the WebDriver wire protocol.
@@ -244,8 +285,8 @@ bot.inject.executeScript = function(fn, args, opt_stringify, opt_window) {
 
 /**
  * Executes an injected script, which is expected to finish asynchronously
- * before the given {@code timeout}. When the script finishes or an error
- * occurs, the given {@code onDone} callback will be invoked. This callback
+ * before the given `timeout`. When the script finishes or an error
+ * occurs, the given `onDone` callback will be invoked. This callback
  * will have a single argument, a {@link bot.response.ResponseObject} object.
  *
  * The script signals its completion by invoking a supplied callback given
@@ -257,21 +298,21 @@ bot.inject.executeScript = function(fn, args, opt_stringify, opt_window) {
  * "unload" event is fired on the window while an asynchronous script is
  * pending, the script will be aborted and an error will be returned.
  *
- * Like {@code bot.inject.executeScript}, this function should only be called
+ * Like `bot.inject.executeScript`, this function should only be called
  * from an external source. It handles wrapping and unwrapping of input/output
  * values.
  *
  * @param {(!Function|string)} fn Either the function to execute, or a string
  *     defining the body of an anonymous function that should be executed. This
  *     function should only contain references to symbols defined in the context
- *     of the target window ({@code opt_window}). Any references to symbols
+ *     of the target window (`opt_window`). Any references to symbols
  *     defined in this context will likely generate a ReferenceError.
  * @param {Array.<*>} args An array of wrapped script arguments, as defined by
  *     the WebDriver wire protocol.
  * @param {number} timeout The amount of time, in milliseconds, the script
  *     should be permitted to run; must be non-negative.
  * @param {function(string)|function(!bot.response.ResponseObject)} onDone
- *     The function to call when the given {@code fn} invokes its callback,
+ *     The function to call when the given `fn` invokes its callback,
  *     or when an exception or timeout occurs. This will always be called.
  * @param {boolean=} opt_stringify Whether the result should be returned as a
  *     serialized JSON string.
@@ -352,7 +393,7 @@ bot.inject.executeAsyncScript = function(fn, args, timeout, onDone,
  * script.
  * @param {*} value The script result.
  * @return {{status:bot.ErrorCode,value:*}} The wrapped value.
- * @see http://code.google.com/p/selenium/wiki/JsonWireProtocol#Responses
+ * @see https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#responses
  */
 bot.inject.wrapResponse = function(value) {
   return {
@@ -367,7 +408,7 @@ bot.inject.wrapResponse = function(value) {
  * for transmission to the process that injected this script.
  * @param {Error} err The error to wrap.
  * @return {{status:bot.ErrorCode,value:*}} The wrapped error object.
- * @see http://code.google.com/p/selenium/wiki/JsonWireProtocol#Failed_Commands
+ * @see https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol#failed-commands
  */
 bot.inject.wrapError = function(err) {
   // TODO: Parse stackTrace

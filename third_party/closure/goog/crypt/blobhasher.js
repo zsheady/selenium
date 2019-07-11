@@ -31,11 +31,9 @@ goog.provide('goog.crypt.BlobHasher');
 goog.provide('goog.crypt.BlobHasher.EventType');
 
 goog.require('goog.asserts');
-goog.require('goog.crypt');
-goog.require('goog.crypt.Hash');
-goog.require('goog.debug.Logger');
 goog.require('goog.events.EventTarget');
 goog.require('goog.fs');
+goog.require('goog.log');
 
 
 
@@ -45,10 +43,12 @@ goog.require('goog.fs');
  * @param {!goog.crypt.Hash} hashFn The hash function to use.
  * @param {number=} opt_blockSize Processing block size.
  * @constructor
+ * @struct
  * @extends {goog.events.EventTarget}
+ * @final
  */
 goog.crypt.BlobHasher = function(hashFn, opt_blockSize) {
-  goog.base(this);
+  goog.crypt.BlobHasher.base(this, 'constructor');
 
   /**
    * The actual hash function.
@@ -66,7 +66,7 @@ goog.crypt.BlobHasher = function(hashFn, opt_blockSize) {
 
   /**
    * Computed hash value.
-   * @type {Array.<number>}
+   * @type {Array<number>}
    * @private
    */
   this.hashVal_ = null;
@@ -101,10 +101,10 @@ goog.crypt.BlobHasher = function(hashFn, opt_blockSize) {
 
   /**
    * The logger used by this object.
-   * @type {!goog.debug.Logger}
+   * @type {goog.log.Logger}
    * @private
    */
-  this.logger_ = goog.debug.Logger.getLogger('goog.crypt.BlobHasher');
+  this.logger_ = goog.log.getLogger('goog.crypt.BlobHasher');
 };
 goog.inherits(goog.crypt.BlobHasher, goog.events.EventTarget);
 
@@ -187,7 +187,7 @@ goog.crypt.BlobHasher.prototype.getBytesProcessed = function() {
 
 
 /**
- * @return {Array.<number>} The computed hash value or null if not ready.
+ * @return {Array<number>} The computed hash value or null if not ready.
  */
 goog.crypt.BlobHasher.prototype.getHash = function() {
   return this.hashVal_;
@@ -203,7 +203,6 @@ goog.crypt.BlobHasher.prototype.processNextBlock_ = function() {
   goog.asserts.assert(this.blob_, 'A hash computation must be in progress.');
 
   if (this.bytesProcessed_ < this.blob_.size) {
-
     if (this.hashingLimit_ <= this.bytesProcessed_) {
       // Throttle limit reached. Wait until we are allowed to hash more bytes.
       this.dispatchEvent(goog.crypt.BlobHasher.EventType.THROTTLED);
@@ -219,10 +218,10 @@ goog.crypt.BlobHasher.prototype.processNextBlock_ = function() {
 
     var endOffset = Math.min(this.hashingLimit_, this.blob_.size);
     var size = Math.min(endOffset - this.bytesProcessed_, this.blockSize_);
-    var chunk = goog.fs.sliceBlob(this.blob_, this.bytesProcessed_,
-                                  this.bytesProcessed_ + size);
+    var chunk = goog.fs.sliceBlob(
+        this.blob_, this.bytesProcessed_, this.bytesProcessed_ + size);
     if (!chunk || chunk.size != size) {
-      this.logger_.severe('Failed slicing the blob');
+      goog.log.error(this.logger_, 'Failed slicing the blob');
       this.onError_();
       return;
     }
@@ -232,7 +231,7 @@ goog.crypt.BlobHasher.prototype.processNextBlock_ = function() {
     } else if (this.fileReader_.readAsBinaryString) {
       this.fileReader_.readAsBinaryString(chunk);
     } else {
-      this.logger_.severe('Failed calling the chunk reader');
+      goog.log.error(this.logger_, 'Failed calling the chunk reader');
       this.onError_();
     }
   } else {
@@ -248,18 +247,19 @@ goog.crypt.BlobHasher.prototype.processNextBlock_ = function() {
  * @private
  */
 goog.crypt.BlobHasher.prototype.onLoad_ = function() {
-  this.logger_.info('Successfully loaded a chunk');
+  goog.log.info(this.logger_, 'Successfully loaded a chunk');
 
   var array = null;
   if (this.fileReader_.result instanceof Array ||
       goog.isString(this.fileReader_.result)) {
     array = this.fileReader_.result;
-  } else if (goog.global['ArrayBuffer'] && goog.global['Uint8Array'] &&
-             this.fileReader_.result instanceof ArrayBuffer) {
+  } else if (
+      goog.global['ArrayBuffer'] && goog.global['Uint8Array'] &&
+      this.fileReader_.result instanceof ArrayBuffer) {
     array = new Uint8Array(this.fileReader_.result);
   }
   if (!array) {
-    this.logger_.severe('Failed reading the chunk');
+    goog.log.error(this.logger_, 'Failed reading the chunk');
     this.onError_();
     return;
   }

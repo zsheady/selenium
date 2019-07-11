@@ -1,28 +1,10 @@
 require 'rake-tasks/crazy_fun/mappings/common'
 require 'rake-tasks/crazy_fun/mappings/common'
-require 'rake-tasks/crazy_fun/mappings/java'
+require 'pathname'
 require 'set'
 
 class JavascriptMappings
   def add_all(fun)
-    # Concatenates the transitive closure of its input files into a single
-    # file, without minification or type-checking.
-    # This rule is DEPRECATED and should not be used.
-    #
-    # Arguments:
-    #   name: The name of the rule.
-    #   srcs: A list of source .js files to include.
-    #   deps: A list of dependent js_deps rules to include.
-    #
-    # Outputs:
-    #   $name.js: The concatenated file.
-    fun.add_mapping("js_deps", Javascript::CheckPreconditions.new)
-    fun.add_mapping("js_deps", Javascript::CreateTask.new)
-    fun.add_mapping("js_deps", Javascript::CreateTaskShortName.new)
-    fun.add_mapping("js_deps", Javascript::AddDependencies.new)
-    fun.add_mapping("js_deps", Javascript::WriteOutput.new)
-    fun.add_mapping("js_deps", Javascript::CreateHeader.new)
-
     # Generates a JavaScript library.
     #
     # Arguments:
@@ -35,6 +17,8 @@ class JavascriptMappings
     #       library listed on a separate line
     fun.add_mapping("js_library", Javascript::CheckPreconditions.new)
     fun.add_mapping("js_library", Javascript::CreateLibrary.new)
+    fun.add_mapping("js_library", Javascript::CreateTaskShortName.new)
+    fun.add_mapping("js_library", Javascript::CreateHeader.new)
 
     # Runs the Closure compiler over a set of JavaScript files, producing a
     # single, (optionally) minified file.
@@ -188,19 +172,6 @@ class JavascriptMappings
     fun.add_mapping("js_fragment_csharp", Javascript::AddDependencies.new)
     fun.add_mapping("js_fragment_csharp", Javascript::ConcatenateCSharp.new)
 
-    # Executes JavaScript tests in the browser.
-    #
-    # Arguments:
-    #  srcs: List of test files.
-    #  path: Path, relative to the client root, that the test files can be
-    #      located.
-    #  deps: A list of test dependencies.
-    fun.add_mapping("js_test", Javascript::CheckPreconditions.new)
-    fun.add_mapping("js_test", Javascript::CreateTask.new)
-    fun.add_mapping("js_test", Javascript::CreateTaskShortName.new)
-    fun.add_mapping("js_test", Javascript::AddDependencies.new)
-    fun.add_mapping("js_test", Javascript::RunTests.new)
-
     fun.add_mapping("node_module", Javascript::CheckPreconditions.new)
     fun.add_mapping("node_module", Javascript::Node::CreateTask.new)
     fun.add_mapping("node_module", Javascript::CreateTaskShortName.new)
@@ -209,21 +180,192 @@ class JavascriptMappings
 end
 
 module Javascript
-  # CrazyFunJava.ant.taskdef :name      => "jscomp",
-  #                          :classname => "com.google.javascript.jscomp.ant.CompileTask",
-  #                          :classpath => "third_party/closure/bin/compiler-20130603.jar"
 
-  class BaseJs < Tasks
-    attr_reader :calcdeps
+  class ClosureDeps
+
+    # Describes the dependency info for a single file.
+    class Info
+      attr_accessor :file       # Absolute path to the file.
+      attr_accessor :provides   # Symbols provided by this file.
+      attr_accessor :requires   # Symbols required by this file.
+      attr_accessor :is_module  # Whether this file defines a Closure module.
+
+      def initialize(file)
+        @file = File.expand_path(file)
+        @provides = []
+        @requires = []
+        @is_module = false
+      end
+    end
 
     def initialize()
-      py = "java -jar third_party/py/jython.jar"
-      if (python?)
-        py = "python"
-      end
-      @calcdeps = "#{py} third_party/closure/bin/calcdeps.py " +
-                  "-c third_party/closure/bin/compiler-20130603.jar "
+      @closure_dir = File.expand_path("third_party/closure/goog")
+      @files = {}
+      @provided = {}
+
+      parse_deps(File.join(@closure_dir, "deps.js"))
     end
+
+    def parse_deps(file)
+      file = File.expand_path(file)
+
+      # Check the global cache if we've already parsed this file.
+      if @@DEPS_FILES[file]
+        @@DEPS_FILES[file].each do |info|
+          info.provides.each{|p| record_provider(p, info)}
+        end
+        return
+      end
+
+      @@DEPS_FILES[file] = []
+      IO.read(file).each_line do |line|
+        if data = @@ADD_DEP_REGEX.match(line)
+          info = Info.new(File.expand_path(data[1], @closure_dir))
+          info.is_module = (data[4] != "false" and data[4] != "{}")
+          @@DEPS_FILES[file].push(info)
+          @@FILES[file] = info
+
+          if data[2]
+            info.provides = data[2].scan(/['"]([^'"]+)['"]/).collect do |m|
+              record_provider(m[0], info)
+              m[0]
+            end
+          end
+
+          if data[3]
+            info.requires = data[3].scan(/['"]([^'"]+)['"]/).collect{|m| m[0]}
+          end
+        end
+      end
+    end
+
+    def parse_file(file)
+      file = File.expand_path(file)
+
+      # Check the global cache if we've already parsed this file.
+      if @@FILES[file]
+        info = @files[file] = @@FILES[file]
+        info.provides.each{|p| record_provider(p, info)}
+        return
+      end
+
+      info = Info.new(file)
+      @@FILES[file] = @files[file] = info
+
+      IO.read(file).each_line do |line|
+        if data = @@MODULE_REGEX.match(line)
+          info.provides.push(data[1])
+          info.is_module = true
+          record_provider(data[1], info)
+        elsif data = @@PROVIDE_REGEX.match(line)
+          info.provides.push(data[1])
+          record_provider(data[1], info)
+        elsif data = @@REQUIRE_REGEX.match(line)
+          info.requires.push(data[1])
+        end
+      end
+    end
+
+    def write_deps(file)
+      @files.each do |_, info|
+        info.requires.each do |symbol|
+          if !@provided[symbol]
+            raise StandardError, "Missing provider for #{symbol}, required in #{info.file}"
+          end
+        end
+      end
+
+      File.open(file, "w") do |f|
+        f.write("// This file was auto-generated. Do not edit\n")
+        @files.each do |_, info|
+          relative_path = Pathname.new(info.file).relative_path_from(Pathname.new(@closure_dir))
+
+          f.write("goog.addDependency('#{relative_path}', [")
+          if info.provides.length > 0
+            f.write "'#{info.provides.join("', '")}'"
+          end
+          f.write("], [")
+          if info.requires.length > 0
+            f.write("'#{info.requires.join("', '")}'")
+          end
+          f.write("], #{info.is_module});\n")
+        end
+      end
+    end
+
+    def calc_deps(files)
+
+      def resolve_deps(file, symbol, result_list, seen_list)
+        if !@provided[symbol]
+          raise StandardError, "Missing provider for #{symbol}, required in #{file}"
+        end
+
+        dep = @provided[symbol]
+        if seen_list.index(dep.file) == nil
+          seen_list.push(dep.file)
+          dep.requires.each{|r| resolve_deps(dep.file, r, result_list, seen_list)}
+          result_list.push(dep.file)
+        end
+      end
+
+      result_list = [File.join(@closure_dir, "base.js")]
+      seen_list = []
+      Array(files).each do |file|
+        file = File.expand_path(file)
+        parse_file(file)
+        info = @files[file]
+
+        seen_list.push(file)
+        info.requires.each do |symbol|
+          resolve_deps(file, symbol, result_list, seen_list)
+        end
+        result_list.push(file)
+      end
+
+      result_list.uniq
+    end
+
+    private
+    @@ADD_DEP_REGEX = Regexp.new [
+        "^goog.addDependency\\s*\\(\\s*",
+        "['\"]([^'\"]+)['\"]",     # Relative path from Closure's base.js
+        "\\s*,\\s*",
+        "\\[([^\\]]+)?\\]",        # Provided symbols
+        "\\s*,\\s*",
+        "\\[([^\\]]+)?\\]",        # Required symbols
+        "\\s*",
+        "(?:,\\s*(true|false|(?:\\{[^\\}]*\\})))?",  # Module flag.
+        "\\s*\\)"
+    ].each {|r| r.to_s}.join('')
+    @@MODULE_REGEX = /^goog\.module\s*\(\s*['"]([^'"]+)['"]\s*\)/
+    @@PROVIDE_REGEX = /^goog\.provide\s*\(\s*['"]([^'"]+)['"]\s*\)/
+    # goog.require statement may have a LHS assignment if inside a goog.module
+    # file. This is a simplified version of:
+    # https://github.com/google/closure-compiler/blob/master/src/com/google/javascript/jscomp/deps/JsFileParser.java#L41
+    @@REQUIRE_REGEX = /^\s*(?:(?:var|let|const)\s+[a-zA-Z_$][a-zA-Z0-9$_]*\s*=\s*)?goog\.require\s*\(\s*['"]([^'"]+)['"]\s*\)/
+
+    # Global cache used to avoid parsing files multiple times. The parsed
+    # information is copied into the individual instance's local graph so we
+    # can still detect when a rule has invalid inputs.
+
+    # Maps file name to an Info object for each parsed file.
+    @@FILES = {}
+
+    # Contains dependency info parsed from a Closurere deps.js file. Maps file
+    # name to an array of Info objects for each described file.
+    @@DEPS_FILES = {}
+
+    def record_provider(symbol, info)
+      if provider = @provided[symbol]
+        return if provider.file == info.file
+        raise StandardError, "Duplicate provide for #{symbol} in #{info.file}, first seen in #{provider.file}"
+      end
+      @provided[symbol] = info
+    end
+
+  end
+
+  class BaseJs < Tasks
 
     def js_name(dir, name)
       name = task_name(dir, name)
@@ -260,95 +402,12 @@ module Javascript
     end
 
     def calc_deps(src_files, js_files)
-      all_js = js_files
-      all_js += Dir['third_party/closure/goog/**/*.js']
-      all_js = all_js.collect {|f| File.expand_path(f)}
-      all_deps = build_deps_from_files(all_js)
-
-      search_hash = build_deps_hash(all_deps)
-
-      result_list = [File.expand_path("third_party/closure/goog/base.js")]
-      seen_list = []
-      src_files.each do |input_file|
-        seen_list.push(input_file)
-        IO.read(input_file).each_line do |line|
-          data = @@REQ_REGEX.match(line)
-          if data
-            req = data[1]
-            resolve_deps(req, search_hash, result_list, seen_list)
-          end
-        end
-        result_list.push(input_file)
-      end
-
-      result_list.uniq
+      deps = ClosureDeps.new
+      Array(js_files).each {|f| deps.parse_file(f)}
+      deps.calc_deps(src_files).uniq
     end
 
     private
-    @@REQ_REGEX = /^goog\.require\s*\(\s*[\'\"]([^\)]+)[\'\"]\s*\)/
-    @@PROV_REGEX = /^goog\.provide\s*\(\s*[\'\"]([^\)]+)[\'\"]\s*\)/
-    @@DEP_MAP = {}
-
-    def resolve_deps(req, search_hash, result_list, seen_list)
-      if !search_hash[req]
-        raise StandardError, "Missing provider for (#{req})"
-      end
-
-      dep = search_hash[req]
-      if seen_list.index(dep) == nil
-        seen_list.push(dep)
-        dep[:reqs].each do |sub_req|
-          resolve_deps(sub_req, search_hash, result_list, seen_list)
-        end
-        result_list.push(dep[:filename])
-      end
-    end
-
-    def build_deps_from_files(files)
-      result = []
-      filenames = []
-      files.each do |filename|
-        next if filenames.index(filename) != nil
-
-        if !@@DEP_MAP[filename].nil?
-          dep = @@DEP_MAP[filename]
-        else
-          @@DEP_MAP[filename] = dep = {}
-          dep[:filename] = filename
-          dep[:reqs] = []
-          dep[:provides] = []
-          IO.read(filename).each_line do |line|
-            data = @@REQ_REGEX.match(line)
-            if data
-              dep[:reqs].push(data[1])
-              next
-            end
-
-            data = @@PROV_REGEX.match(line)
-            if data
-              dep[:provides].push(data[1])
-            end
-          end
-        end
-        result.push(dep)
-        filenames.push(filename)
-      end
-
-      result
-    end
-
-    def build_deps_hash(deps)
-      dep_hash = {}
-      deps.each do |dep|
-        dep[:provides].each do |prov|
-          if dep_hash[prov]
-            raise StandardError, "Duplicate provide (#{prov}) in (#{dep_hash[prov][:filename]}, #{dep[:filename]})"
-          end
-          dep_hash[prov] = dep
-        end
-      end
-      dep_hash
-    end
   end
 
   class CheckPreconditions
@@ -421,25 +480,6 @@ module Javascript
     end
   end
 
-  class WriteOutput < BaseJs
-    def handle(fun, dir, args)
-      output = js_name(dir, args[:name])
-
-      file output do
-        t = Rake::Task[task_name(dir, args[:name])]
-
-        js_files = build_deps(output, Rake::Task[output], []).uniq
-
-        mkdir_p File.dirname(output)
-        File.open(output, 'w') do |f|
-          js_files.each do |dep|
-            f << IO.read(dep)
-          end
-        end
-      end
-    end
-  end
-
   class CreateLibrary < BaseJs
     def manifest_name(dir, name)
       name = task_name(dir, name)
@@ -471,6 +511,24 @@ module Javascript
           end
         end
       end
+
+      # Generate build/{$task_name}.js, which concatenates the transitive
+      # closure of js files in this library. Files are added to output in the
+      # order declared in build.desc.
+      # This is an implicit output not linked to the main task.
+      jslib = js_name(dir, args[:name])
+      file jslib do
+        js_files = build_deps(jslib, Rake::Task[jslib], []).uniq
+
+        mkdir_p File.dirname(jslib)
+        File.open(jslib, 'w') do |f|
+          js_files.each do |dep|
+            f << IO.read(dep)
+          end
+        end
+      end
+      add_dependencies(Rake::Task[jslib], dir, args[:deps])
+      add_dependencies(Rake::Task[jslib], dir, args[:srcs])
     end
   end
 
@@ -497,28 +555,27 @@ module Javascript
         formatting = !args[:no_format].nil? ? "" : '--formatting=PRETTY_PRINT'
         flags.push(formatting)
 
-        flags.push('--third_party=true') unless !flags.index('--third_party=false').nil?
         flags.push("--js_output_file=#{output}")
 
-        cmd = "" <<
-           flags.join(" ") <<
+        expanded_flags = flags.join(" ") <<
            " --js='" <<
            all_deps.join("' --js='") << "'"
 
         if (args[:externs])
           args[:externs].each do |extern|
-            cmd << " --externs=#{File.join(dir, extern)} "
+            expanded_flags << " --externs=#{File.join(dir, extern)} "
           end
         end
 
         mkdir_p File.dirname(output)
 
-        CrazyFunJava.ant.java :classname => "com.google.javascript.jscomp.CommandLineRunner", :failonerror => true do
-          classpath do
-            pathelement :path =>  "third_party/closure/bin/compiler-20130603.jar"
-          end
-          arg :line => cmd
-        end
+        flag_file = File.join(File.dirname(output), "closure_flags.txt")
+        File.open(flag_file, 'w') {|f| f.write(expanded_flags)}
+
+        cmd = "java -cp third_party/closure/bin/compiler.jar com.google.javascript.jscomp.CommandLineRunner --flagfile " << flag_file
+        sh cmd
+
+        rm_rf flag_file
       end
     end
   end
@@ -682,12 +739,10 @@ module Javascript
 
         mkdir_p Platform.path_for folder
 
-        CrazyFunJava.ant.java :classname => "com.google.javascript.jscomp.CommandLineRunner", :failonerror => true do
-          classpath do
-            pathelement :path =>  "third_party/closure/bin/compiler-20130603.jar"
-          end
-          arg :line => flags.join(" ")
-        end
+        cmd = "java -cp third_party/closure/bin/compiler.jar com.google.javascript.jscomp.CommandLineRunner " <<
+          flags.join(" ")
+
+        sh cmd
       end
     end
   end
@@ -766,51 +821,57 @@ module Javascript
                   "document:typeof window!='undefined'?window.document:null" +
                   "}, arguments);}"
 
-        cmd = "" <<
-            "--create_name_map_files=true " <<
-            "--third_party=false " <<
-            "--js_output_file=#{output} " <<
-            "--output_wrapper='#{wrapper}' " <<
-            "--compilation_level=#{compilation_level(minify)} " <<
-            "--define=goog.NATIVE_ARRAY_PROTOTYPES=false " <<
-            "--define=bot.json.NATIVE_JSON=false " <<
-            "#{defines} " <<
-            "--jscomp_off=unknownDefines " <<
-            "--jscomp_off=deprecated " <<
-            "--jscomp_error=accessControls " <<
-            "--jscomp_error=ambiguousFunctionDecl " <<
-            "--jscomp_error=checkDebuggerStatement " <<
-            "--jscomp_error=checkRegExp " <<
-            "--jscomp_error=checkTypes " <<
-            "--jscomp_error=checkVars " <<
-            "--jscomp_error=const " <<
-            "--jscomp_error=constantProperty " <<
-            "--jscomp_error=duplicate " <<
-            "--jscomp_error=duplicateMessage " <<
-            "--jscomp_error=externsValidation " <<
-            "--jscomp_error=fileoverviewTags " <<
-            "--jscomp_error=globalThis " <<
-            "--jscomp_error=internetExplorerChecks " <<
-            "--jscomp_error=invalidCasts " <<
-            "--jscomp_error=missingProperties " <<
-            "--jscomp_error=nonStandardJsDocs " <<
-            "--jscomp_error=strictModuleDepCheck " <<
-            "--jscomp_error=typeInvalidation " <<
-            "--jscomp_error=undefinedNames " <<
-            "--jscomp_error=undefinedVars " <<
-            "--jscomp_error=uselessCode " <<
-            "--jscomp_error=visibility " <<
-            "--js='" <<
-            all_deps.join("' --js='") << "'"
+        formatting =
+            (ENV['pretty_print'] == 'true') ?  "--formatting=PRETTY_PRINT" : ""
+
+        flags = []
+        flags.push("--js_output_file=#{output}")
+        flags.push("--output_wrapper=\"#{wrapper}\"")
+        flags.push("--compilation_level=#{compilation_level(minify)}")
+        flags.push("--define=goog.NATIVE_ARRAY_PROTOTYPES=false")
+        flags.push("--define=bot.json.NATIVE_JSON=false")
+        flags.push("#{defines}")
+        flags.push("#{formatting}")
+        flags.push("--jscomp_off=unknownDefines")
+        flags.push("--jscomp_off=deprecated")
+        flags.push("--jscomp_error=accessControls")
+        flags.push("--jscomp_error=ambiguousFunctionDecl")
+        flags.push("--jscomp_error=checkDebuggerStatement")
+        flags.push("--jscomp_error=checkRegExp")
+        flags.push("--jscomp_error=checkTypes")
+        flags.push("--jscomp_error=checkVars")
+        flags.push("--jscomp_error=const")
+        flags.push("--jscomp_error=constantProperty")
+        flags.push("--jscomp_error=duplicate")
+        flags.push("--jscomp_error=duplicateMessage")
+        flags.push("--jscomp_error=externsValidation")
+        flags.push("--jscomp_error=fileoverviewTags")
+        flags.push("--jscomp_error=globalThis")
+        flags.push("--jscomp_error=internetExplorerChecks")
+        flags.push("--jscomp_error=invalidCasts")
+        flags.push("--jscomp_error=missingProperties")
+        flags.push("--jscomp_error=nonStandardJsDocs")
+        flags.push("--jscomp_error=strictModuleDepCheck")
+        flags.push("--jscomp_error=typeInvalidation")
+        flags.push("--jscomp_error=undefinedNames")
+        flags.push("--jscomp_error=undefinedVars")
+        flags.push("--jscomp_error=uselessCode")
+        flags.push("--jscomp_error=visibility")
+
+        expanded_flags = flags.join(" ") <<
+           " --js='" <<
+           all_deps.join("' --js='") << "'"
 
         mkdir_p File.dirname(output)
 
-        CrazyFunJava.ant.java :classname => "com.google.javascript.jscomp.CommandLineRunner", :fork => false, :failonerror => true do
-          classpath do
-            pathelement :path =>  "third_party/closure/bin/compiler-20130603.jar"
-          end
-          arg :line => cmd
-        end
+        flag_file = File.join(File.dirname(output), "closure_flags.txt")
+        File.open(flag_file, 'w') {|f| f.write(expanded_flags)}
+
+        cmd = "java -cp third_party/closure/bin/compiler.jar com.google.javascript.jscomp.CommandLineRunner " <<
+            "--flagfile " << flag_file
+
+        sh cmd
+        rm_rf flag_file
       end
 
       output_task = Rake::Task[output]
@@ -837,7 +898,7 @@ module Javascript
     MAX_STR_LENGTH_JAVA = MAX_LINE_LENGTH_JAVA - "       .append\(\"\"\)\n".length
     COPYRIGHT =
           "/*\n" +
-          " * Copyright 2011-2012 WebDriver committers\n" +
+          " * Copyright 2011-2014 Software Freedom Conservancy\n" +
           " *\n" +
           " * Licensed under the Apache License, Version 2.0 (the \"License\");\n" +
           " * you may not use this file except in compliance with the License.\n" +
@@ -1050,7 +1111,7 @@ module Javascript
 
     def generate_java(dir, name, task_name, output, js_files, package)
       file output => js_files do
-        task_name =~ /([a-z]+)-driver/
+        task_name =~ /([a-z]+)-(driver|atoms)/
         implementation = $1.capitalize
         output_dir = File.dirname(output)
         mkdir_p output_dir unless File.exists?(output_dir)
@@ -1216,77 +1277,6 @@ module Javascript
       task_name = task_name(dir, args[:name]) + ":header"
       generate_header(dir, args[:name], task_name, out, [js], false, false)
       task task_name => [out]
-    end
-  end
-
-  class RunTests < BaseJs
-    def handle(fun, dir, args)
-      task_name = task_name(dir, args[:name])
-
-      java_browsers = BROWSERS.find_all { |k,v| v.has_key?(:java) }
-      available_browsers = java_browsers.find_all { |k,v| [nil, true].include?(v[:available]) }
-      listed_browsers = args[:browsers] ? Hash[*(args[:browsers]).collect { |b| [b, BROWSERS[b]]}.flatten].find_all { |k,v| !v.nil? } : java_browsers
-
-      listed_browsers.each do |browser, all_browser_data|
-        browser_data = all_browser_data[:java]
-        browser_task_name = "#{task_name}_#{browser}"
-        deps = [task_name]
-        deps.concat(browser_data[:deps]) if browser_data[:deps]
-
-        desc "Run the tests for #{browser_task_name}"
-        task "#{browser_task_name}:run" => deps do
-          puts "Testing: #{browser_task_name} " +
-              (ENV['log'] == 'true' ? 'Log: build/test_logs/TEST-' + browser_task_name.gsub(/[\/:]+/, '-') : '')
-
-          cp = CrazyFunJava::ClassPath.new("#{browser_task_name}:run")
-          mkdir_p 'build/test_logs'
-
-          CrazyFunJava.ant.project.getBuildListeners().get(0).setMessageOutputLevel(2) if ENV['log']
-          CrazyFunJava.ant.junit(:fork => true, :forkmode =>  'once', :showoutput => true,
-                                 :printsummary => 'on', :haltonerror => halt_on_error?, :haltonfailure => halt_on_failure?) do |ant|
-            ant.classpath do |ant_cp|
-              cp.all.each do |jar|
-                ant_cp.pathelement(:location => jar)
-              end
-            end
-
-            sysprops = args[:sysproperties] || []
-
-            ant.sysproperty :key => "selenium.browser", :value => browser #browser_data[:class]
-
-            sysprops.each do |map|
-              map.each do |key, value|
-                ant.sysproperty :key => key, :value => value
-              end
-            end
-
-            if ($DEBUG)
-              ant.jvmarg(:line => "-Xdebug -Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005")
-            end
-
-            test_dir = File.join(dir, 'test')
-            ant.sysproperty :key => 'js.test.dir', :value => test_dir
-
-            if !args[:exclude].nil?
-              excludes = File.join(dir, args[:exclude])
-              excludes = FileList[excludes].to_a.collect do |f|
-                f[test_dir.length + 1..-1]
-              end
-              ant.sysproperty :key => 'js.test.excludes', :value => excludes.join(',')
-            end
-
-            ant.formatter(:type => 'plain')
-            ant.formatter(:type => 'xml')
-
-            ant.test(:name => "org.openqa.selenium.javascript.ClosureTestSuite",
-                     :outfile => "TEST-" + browser_task_name.gsub(/[\/:]+/, "-"),
-                     :todir => 'build/test_logs')
-          end
-          CrazyFunJava.ant.project.getBuildListeners().get(0).setMessageOutputLevel($DEBUG ? 2 : 0)
-        end
-      end
-
-      task "#{task_name}:run" => (listed_browsers & available_browsers).map { |browser,_| "#{task_name}_#{browser}:run" }
     end
   end
 

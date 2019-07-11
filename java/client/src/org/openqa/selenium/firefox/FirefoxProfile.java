@@ -1,36 +1,31 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.firefox;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Maps;
 import com.google.common.io.Resources;
 
 import org.openqa.selenium.Beta;
-import org.openqa.selenium.Proxy;
-import org.openqa.selenium.Proxy.ProxyType;
 import org.openqa.selenium.WebDriverException;
-import org.openqa.selenium.firefox.internal.ClasspathExtension;
-import org.openqa.selenium.firefox.internal.Extension;
-import org.openqa.selenium.firefox.internal.FileExtension;
 import org.openqa.selenium.io.FileHandler;
-import org.openqa.selenium.io.IOUtils;
 import org.openqa.selenium.io.TemporaryFilesystem;
 import org.openqa.selenium.io.Zip;
+import org.openqa.selenium.json.Json;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -39,27 +34,23 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.StringReader;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.Map;
-
-import static org.openqa.selenium.firefox.FirefoxDriver.ACCEPT_UNTRUSTED_CERTIFICATES;
-import static org.openqa.selenium.firefox.FirefoxDriver.ASSUME_UNTRUSTED_ISSUER;
-import static org.openqa.selenium.firefox.FirefoxDriver.DEFAULT_ENABLE_NATIVE_EVENTS;
 
 
 public class FirefoxProfile {
   public static final String PORT_PREFERENCE = "webdriver_firefox_port";
+  public static final String ALLOWED_HOSTS_PREFERENCE = "webdriver_firefox_allowed_hosts";
 
   private static final String defaultPrefs = "/org/openqa/selenium/firefox/webdriver_prefs.json";
 
   private Preferences additionalPrefs;
 
-  private Map<String, Extension> extensions = Maps.newHashMap();
-  private boolean enableNativeEvents;
+  private Map<String, Extension> extensions = new HashMap<>();
   private boolean loadNoFocusLib;
   private boolean acceptUntrustedCerts;
   private boolean untrustedCertIssuer;
   private File model;
-  private static final String ENABLE_NATIVE_EVENTS_PREF = "webdriver_enable_native_events";
   private static final String ACCEPT_UNTRUSTED_CERTS_PREF = "webdriver_accept_untrusted_certs";
   private static final String ASSUME_UNTRUSTED_ISSUER_PREF = "webdriver_assume_untrusted_issuer";
 
@@ -69,10 +60,9 @@ public class FirefoxProfile {
 
   /**
    * Constructs a firefox profile from an existing profile directory.
-   * <p/>
    * <p>
    * Users who need this functionality should consider using a named profile.
-   * 
+   *
    * @param profileDir The profile directory to use as a model.
    */
   public FirefoxProfile(File profileDir) {
@@ -95,17 +85,12 @@ public class FirefoxProfile {
     if (prefsInModel.exists()) {
       StringReader reader = new StringReader("{\"frozen\": {}, \"mutable\": {}}");
       Preferences existingPrefs = new Preferences(reader, prefsInModel);
-      enableNativeEvents = getBooleanPreference(existingPrefs, ENABLE_NATIVE_EVENTS_PREF,
-                                                DEFAULT_ENABLE_NATIVE_EVENTS);
-      acceptUntrustedCerts = getBooleanPreference(existingPrefs, ACCEPT_UNTRUSTED_CERTS_PREF,
-                                                  ACCEPT_UNTRUSTED_CERTIFICATES);
-      untrustedCertIssuer = getBooleanPreference(existingPrefs, ASSUME_UNTRUSTED_ISSUER_PREF,
-                                                 ASSUME_UNTRUSTED_ISSUER);
+      acceptUntrustedCerts = getBooleanPreference(existingPrefs, ACCEPT_UNTRUSTED_CERTS_PREF, true);
+      untrustedCertIssuer = getBooleanPreference(existingPrefs, ASSUME_UNTRUSTED_ISSUER_PREF, true);
       existingPrefs.addTo(additionalPrefs);
     } else {
-      enableNativeEvents = DEFAULT_ENABLE_NATIVE_EVENTS;
-      acceptUntrustedCerts = ACCEPT_UNTRUSTED_CERTIFICATES;
-      untrustedCertIssuer = ASSUME_UNTRUSTED_ISSUER;
+      acceptUntrustedCerts = true;
+      untrustedCertIssuer = true;
     }
 
     // This is not entirely correct but this is not stored in the profile
@@ -121,6 +106,8 @@ public class FirefoxProfile {
 
   /**
    * <strong>Internal method. This is liable to change at a moment's notice.</strong>
+   *
+   * @return InputStreamReader of the default firefox profile preferences
    */
   @Beta
   protected Reader onlyOverrideThisIfYouKnowWhatYouAreDoing() {
@@ -145,6 +132,30 @@ public class FirefoxProfile {
     throw new WebDriverException("Expected boolean value is not a boolean. It is: " + value);
   }
 
+  public String getStringPreference(String key, String defaultValue) {
+    Object preference = additionalPrefs.getPreference(key);
+    if(preference instanceof String) {
+      return (String) preference;
+    }
+    return defaultValue;
+  }
+
+  public int getIntegerPreference(String key, int defaultValue) {
+    Object preference = additionalPrefs.getPreference(key);
+    if(preference instanceof Integer) {
+      return (Integer) preference;
+    }
+    return defaultValue;
+  }
+
+  public boolean getBooleanPreference(String key, boolean defaultValue) {
+    Object preference = additionalPrefs.getPreference(key);
+    if(preference instanceof Boolean) {
+      return (Boolean) preference;
+    }
+    return defaultValue;
+  }
+
   private void verifyModel(File model) {
     if (model == null) {
       return;
@@ -165,7 +176,7 @@ public class FirefoxProfile {
     return extensions.containsKey("webdriver");
   }
 
-  public void addExtension(Class<?> loadResourcesUsing, String loadFrom) throws IOException {
+  public void addExtension(Class<?> loadResourcesUsing, String loadFrom) {
     // Is loadFrom a file?
     File file = new File(loadFrom);
     if (file.exists()) {
@@ -178,11 +189,10 @@ public class FirefoxProfile {
 
   /**
    * Attempt to add an extension to install into this instance.
-   * 
-   * @param extensionToInstall
-   * @throws IOException
+   *
+   * @param extensionToInstall File pointing to the extension
    */
-  public void addExtension(File extensionToInstall) throws IOException {
+  public void addExtension(File extensionToInstall) {
     addExtension(extensionToInstall.getName(), new FileExtension(extensionToInstall));
   }
 
@@ -204,7 +214,7 @@ public class FirefoxProfile {
    * Note that if a value looks as if it is a quoted string (that is, starts with a quote character
    * and ends with one too) an IllegalArgumentException is thrown: Firefox fails to start properly
    * when some values are set to this.
-   * 
+   *
    * @param key The key
    * @param value The new value.
    */
@@ -214,7 +224,7 @@ public class FirefoxProfile {
 
   /**
    * Set a preference for this particular profile.
-   * 
+   *
    * @param key The key
    * @param value The new value.
    */
@@ -224,59 +234,13 @@ public class FirefoxProfile {
 
   /**
    * Set a preference for this particular profile.
-   * 
+   *
    * @param key The key
    * @param value The new value.
    */
   public void setPreference(String key, int value) {
     additionalPrefs.setPreference(key, value);
   }
-
-  /**
-   * Set proxy preferences for this profile.
-   * 
-   * @param proxy The proxy preferences.
-   * @return The profile, for further settings.
-   * @deprecated This is now handled by the driver itself.
-   */
-  @Deprecated
-  public FirefoxProfile setProxyPreferences(Proxy proxy) {
-    if (proxy.getProxyType() == ProxyType.UNSPECIFIED) {
-      return this;
-    }
-    setPreference("network.proxy.type", proxy.getProxyType().ordinal());
-
-    switch (proxy.getProxyType()) {
-      case MANUAL:// By default, assume we're proxying the lot
-        setPreference("network.proxy.no_proxies_on", "");
-
-        setManualProxyPreference("ftp", proxy.getFtpProxy());
-        setManualProxyPreference("http", proxy.getHttpProxy());
-        setManualProxyPreference("ssl", proxy.getSslProxy());
-        setManualProxyPreference("socks", proxy.getSocksProxy());
-        if (proxy.getNoProxy() != null) {
-          setPreference("network.proxy.no_proxies_on", proxy.getNoProxy());
-        }
-
-        break;
-      case PAC:
-        setPreference("network.proxy.autoconfig_url", proxy.getProxyAutoconfigUrl());
-        break;
-    }
-    return this;
-  }
-
-  private void setManualProxyPreference(String key, String settingString) {
-    if (settingString == null) {
-      return;
-    }
-    String[] hostPort = settingString.split(":");
-    setPreference("network.proxy." + key, hostPort[0]);
-    if (hostPort.length > 1) {
-      setPreference("network.proxy." + key + "_port", Integer.parseInt(hostPort[1]));
-    }
-  }
-
 
   protected Preferences getAdditionalPreferences() {
     return additionalPrefs;
@@ -300,9 +264,6 @@ public class FirefoxProfile {
 
     additionalPrefs.addTo(prefs);
 
-    // Should we use native events?
-    prefs.setPreference(ENABLE_NATIVE_EVENTS_PREF, enableNativeEvents);
-
     // Should we accept untrusted certificates or not?
     prefs.setPreference(ACCEPT_UNTRUSTED_CERTS_PREF, acceptUntrustedCerts);
 
@@ -310,7 +271,7 @@ public class FirefoxProfile {
 
     // If the user sets the home page, we should also start up there
     Object homePage = prefs.getPreference("browser.startup.homepage");
-    if (homePage != null && homePage instanceof String) {
+    if (homePage instanceof String) {
       prefs.setPreference("startup.homepage_welcome_url", "");
     }
 
@@ -318,14 +279,10 @@ public class FirefoxProfile {
       prefs.setPreference("browser.startup.page", 1);
     }
 
-    FileWriter writer = null;
-    try {
-      writer = new FileWriter(userPrefs);
+    try (FileWriter writer = new FileWriter(userPrefs)) {
       prefs.writeTo(writer);
     } catch (IOException e) {
       throw new WebDriverException(e);
-    } finally {
-      IOUtils.closeQuietly(writer);
     }
   }
 
@@ -344,18 +301,10 @@ public class FirefoxProfile {
     }
   }
 
-  public boolean areNativeEventsEnabled() {
-    return enableNativeEvents;
-  }
-
-  public void setEnableNativeEvents(boolean enableNativeEvents) {
-    this.enableNativeEvents = enableNativeEvents;
-  }
-
   /**
    * Returns whether the no focus library should be loaded for Firefox profiles launched on Linux,
    * even if native events are disabled.
-   * 
+   *
    * @return Whether the no focus library should always be loaded for Firefox on Linux.
    */
   public boolean shouldLoadNoFocusLib() {
@@ -364,7 +313,7 @@ public class FirefoxProfile {
 
   /**
    * Sets whether the no focus library should always be loaded on Linux.
-   * 
+   *
    * @param loadNoFocusLib Whether to always load the no focus library.
    */
   public void setAlwaysLoadNoFocusLib(boolean loadNoFocusLib) {
@@ -374,7 +323,7 @@ public class FirefoxProfile {
   /**
    * Sets whether Firefox should accept SSL certificates which have expired, signed by an unknown
    * authority or are generally untrusted. This is set to true by default.
-   * 
+   *
    * @param acceptUntrustedSsl Whether untrusted SSL certificates should be accepted.
    */
 
@@ -387,13 +336,13 @@ public class FirefoxProfile {
    * from an untrusted issuer or will be self signed. Due to limitation within Firefox, it is easy
    * to find out if the certificate has expired or does not match the host it was served for, but
    * hard to find out if the issuer of the certificate is untrusted.
-   * <p/>
+   * <p>
    * By default, it is assumed that the certificates were not be issued from a trusted CA.
-   * <p/>
+   * <p>
    * If you are receive an "untrusted site" prompt on Firefox when using a certificate that was
    * issued by valid issuer, but has expired or is being served served for a different host (e.g.
    * production certificate served in a testing environment) set this to false.
-   * 
+   *
    * @param untrustedIssuer whether to assume untrusted issuer or not.
    */
   public void setAssumeUntrustedCertificateIssuer(boolean untrustedIssuer) {
@@ -405,20 +354,29 @@ public class FirefoxProfile {
   }
 
   public String toJson() throws IOException {
-    File generatedProfile = layoutOnDisk();
-
-    return new Zip().zip(generatedProfile);
+    File file = layoutOnDisk();
+    try {
+      return Zip.zip(file);
+    } finally {
+      clean(file);
+    }
   }
 
   public static FirefoxProfile fromJson(String json) throws IOException {
-    File dir = TemporaryFilesystem.getDefaultTmpFS().createTempDir("webdriver", "duplicated");
+    // We used to just pass in the entire string without quotes. If we see that, we're good.
+    // Otherwise, parse the json.
 
-    new Zip().unzip(json, dir);
+    if (json.trim().startsWith("\"")) {
+      json = new Json().toType(json, String.class);
+    }
 
-    return new FirefoxProfile(dir);
+    return new FirefoxProfile(Zip.unzipToTempDir(
+        json,
+        "webdriver",
+        "duplicated"));
   }
 
-  protected void cleanTemporaryModel() {
+  public void cleanTemporaryModel() {
     clean(model);
   }
 
@@ -426,10 +384,10 @@ public class FirefoxProfile {
    * Call this to cause the current profile to be written to disk. The profile directory is
    * returned. Note that this profile directory is a temporary one and will be deleted when the JVM
    * exists (at the latest)
-   * 
+   *
    * This method should be called immediately before starting to use the profile and should only be
    * called once per instance of the {@link org.openqa.selenium.firefox.FirefoxDriver}.
-   * 
+   *
    * @return The directory containing the profile.
    */
   public File layoutOnDisk() {

@@ -24,70 +24,65 @@ goog.provide('goog.labs.userAgent.engine');
 
 goog.require('goog.array');
 goog.require('goog.labs.userAgent.util');
-goog.require('goog.memoize');
 goog.require('goog.string');
-
-
-/**
- * Returns the user agent string.
- *
- * @return {?string} The user agent string.
- */
-goog.labs.userAgent.engine.getUserAgentString = goog.memoize(function() {
-  return goog.global['navigator'] ? goog.global['navigator'].userAgent : null;
-});
-
-
-/**
- * @param {string} str
- * @return {boolean} Whether the user agent contains the given string.
- * @private
- */
-goog.labs.userAgent.engine.matchUserAgent_ = function(str) {
-  var userAgentString = goog.labs.userAgent.engine.getUserAgentString();
-  return Boolean(userAgentString && goog.string.contains(userAgentString, str));
-};
 
 
 /**
  * @return {boolean} Whether the rendering engine is Presto.
  */
-goog.labs.userAgent.engine.isPresto = goog.memoize(
-    goog.partial(goog.labs.userAgent.engine.matchUserAgent_, 'Presto'));
+goog.labs.userAgent.engine.isPresto = function() {
+  return goog.labs.userAgent.util.matchUserAgent('Presto');
+};
 
 
 /**
  * @return {boolean} Whether the rendering engine is Trident.
  */
-goog.labs.userAgent.engine.isTrident = goog.memoize(
-    goog.partial(goog.labs.userAgent.engine.matchUserAgent_, 'Trident'));
+goog.labs.userAgent.engine.isTrident = function() {
+  // IE only started including the Trident token in IE8.
+  return goog.labs.userAgent.util.matchUserAgent('Trident') ||
+      goog.labs.userAgent.util.matchUserAgent('MSIE');
+};
+
+
+/**
+ * @return {boolean} Whether the rendering engine is Edge.
+ */
+goog.labs.userAgent.engine.isEdge = function() {
+  return goog.labs.userAgent.util.matchUserAgent('Edge');
+};
 
 
 /**
  * @return {boolean} Whether the rendering engine is WebKit.
  */
-goog.labs.userAgent.engine.isWebKit = goog.memoize(
-    goog.partial(goog.labs.userAgent.engine.matchUserAgent_, 'WebKit'));
+goog.labs.userAgent.engine.isWebKit = function() {
+  return goog.labs.userAgent.util.matchUserAgentIgnoreCase('WebKit') &&
+      !goog.labs.userAgent.engine.isEdge();
+};
 
 
 /**
  * @return {boolean} Whether the rendering engine is Gecko.
  */
-goog.labs.userAgent.engine.isGecko = goog.memoize(
-    goog.partial(goog.labs.userAgent.engine.matchUserAgent_, 'Gecko'));
+goog.labs.userAgent.engine.isGecko = function() {
+  return goog.labs.userAgent.util.matchUserAgent('Gecko') &&
+      !goog.labs.userAgent.engine.isWebKit() &&
+      !goog.labs.userAgent.engine.isTrident() &&
+      !goog.labs.userAgent.engine.isEdge();
+};
 
 
 /**
  * @return {string} The rendering engine's version or empty string if version
  *     can't be determined.
  */
-goog.labs.userAgent.engine.getVersion = goog.memoize(function() {
-  var userAgentString = goog.labs.userAgent.engine.getUserAgentString();
-
+goog.labs.userAgent.engine.getVersion = function() {
+  var userAgentString = goog.labs.userAgent.util.getUserAgent();
   if (userAgentString) {
     var tuples = goog.labs.userAgent.util.extractVersionTuples(userAgentString);
 
-    var engineTuple = tuples[1];
+    var engineTuple = goog.labs.userAgent.engine.getEngineTuple_(tuples);
     if (engineTuple) {
       // In Gecko, the version string is either in the browser info or the
       // Firefox version.  See Gecko user agent string reference:
@@ -99,8 +94,9 @@ goog.labs.userAgent.engine.getVersion = goog.memoize(function() {
       return engineTuple[1];
     }
 
-    // IE has only one version identifier, and the Trident version is
-    // specified in the parenthetical.
+    // MSIE has only one version identifier, and the Trident version is
+    // specified in the parenthetical. IE Edge is covered in the engine tuple
+    // detection.
     var browserTuple = tuples[0];
     var info;
     if (browserTuple && (info = browserTuple[2])) {
@@ -109,10 +105,28 @@ goog.labs.userAgent.engine.getVersion = goog.memoize(function() {
         return match[1];
       }
     }
-
-    return '';
   }
-});
+  return '';
+};
+
+
+/**
+ * @param {!Array<!Array<string>>} tuples Extracted version tuples.
+ * @return {!Array<string>|undefined} The engine tuple or undefined if not
+ *     found.
+ * @private
+ */
+goog.labs.userAgent.engine.getEngineTuple_ = function(tuples) {
+  if (!goog.labs.userAgent.engine.isEdge()) {
+    return tuples[1];
+  }
+  for (var i = 0; i < tuples.length; i++) {
+    var tuple = tuples[i];
+    if (tuple[0] == 'Edge') {
+      return tuple;
+    }
+  }
+};
 
 
 /**
@@ -121,13 +135,13 @@ goog.labs.userAgent.engine.getVersion = goog.memoize(function() {
  *     as the given version.
  */
 goog.labs.userAgent.engine.isVersionOrHigher = function(version) {
-  return goog.string.compareVersions(goog.labs.userAgent.engine.getVersion(),
-                                     version) >= 0;
+  return goog.string.compareVersions(
+             goog.labs.userAgent.engine.getVersion(), version) >= 0;
 };
 
 
 /**
- * @param {!Array.<string>} tuples Version tuples.
+ * @param {!Array<!Array<string>>} tuples Version tuples.
  * @param {string} key The key to look for.
  * @return {string} The version string of the given key, if present.
  *     Otherwise, the empty string.
@@ -136,9 +150,7 @@ goog.labs.userAgent.engine.isVersionOrHigher = function(version) {
 goog.labs.userAgent.engine.getVersionForKey_ = function(tuples, key) {
   // TODO(nnaze): Move to util if useful elsewhere.
 
-  var pair = goog.array.find(tuples, function(pair) {
-    return key == pair[0];
-  });
+  var pair = goog.array.find(tuples, function(pair) { return key == pair[0]; });
 
   return pair && pair[1] || '';
 };

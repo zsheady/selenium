@@ -24,6 +24,7 @@ goog.require('goog.async.Deferred');
 goog.require('goog.db.Cursor');
 goog.require('goog.db.Error');
 goog.require('goog.db.Index');
+goog.require('goog.db.KeyRange');
 goog.require('goog.debug');
 goog.require('goog.events');
 
@@ -36,13 +37,14 @@ goog.require('goog.events');
  * object store. They can only be created when setting the version of the
  * database. Should not be created directly, access object stores through
  * transactions.
- * @see goog.db.IndexedDb#setVersion
+ * @see goog.db.UpgradeNeededCallback
  * @see goog.db.Transaction#objectStore
  *
  * @param {!IDBObjectStore} store The backing IndexedDb object.
  * @constructor
+ * @final
  *
- * TODO(user): revisit msg in exception and errors in this class. In newer
+ * TODO(arthurhsu): revisit msg in exception and errors in this class. In newer
  *     Chrome (v22+) the error/request come with a DOM error string that is
  *     already very descriptive.
  */
@@ -98,9 +100,8 @@ goog.db.ObjectStore.prototype.insert_ = function(fn, msg, value, opt_key) {
     return d;
   }
   request.onsuccess = function(ev) {
-    d.callback();
+    d.callback(ev.target.result);
   };
-  var self = this;
   request.onerror = function(ev) {
     msg += goog.debug.deepExpose(value);
     if (opt_key) {
@@ -124,10 +125,7 @@ goog.db.ObjectStore.prototype.insert_ = function(fn, msg, value, opt_key) {
  */
 goog.db.ObjectStore.prototype.put = function(value, opt_key) {
   return this.insert_(
-      'put',
-      'putting into ' + this.getName() + ' with value',
-      value,
-      opt_key);
+      'put', 'putting into ' + this.getName() + ' with value', value, opt_key);
 };
 
 
@@ -143,10 +141,7 @@ goog.db.ObjectStore.prototype.put = function(value, opt_key) {
  */
 goog.db.ObjectStore.prototype.add = function(value, opt_key) {
   return this.insert_(
-      'add',
-      'adding into ' + this.getName() + ' with value ',
-      value,
-      opt_key);
+      'add', 'adding into ' + this.getName() + ' with value ', value, opt_key);
 };
 
 
@@ -154,27 +149,28 @@ goog.db.ObjectStore.prototype.add = function(value, opt_key) {
  * Removes an object from the store. No-op if there is no object present with
  * the given key.
  *
- * @param {IDBKeyType} key The key to remove objects under.
+ * @param {IDBKeyType|!goog.db.KeyRange} keyOrRange The key or range to remove
+ *     objects under.
  * @return {!goog.async.Deferred} The deferred remove request.
  */
-goog.db.ObjectStore.prototype.remove = function(key) {
+goog.db.ObjectStore.prototype.remove = function(keyOrRange) {
   var d = new goog.async.Deferred();
   var request;
   try {
-    request = this.store_['delete'](key);
+    request = this.store_['delete'](
+        keyOrRange instanceof goog.db.KeyRange ? keyOrRange.range() :
+                                                 keyOrRange);
   } catch (err) {
     var msg = 'removing from ' + this.getName() + ' with key ' +
-        goog.debug.deepExpose(key);
+        goog.debug.deepExpose(keyOrRange);
     d.errback(goog.db.Error.fromException(err, msg));
     return d;
   }
-  request.onsuccess = function(ev) {
-    d.callback();
-  };
+  request.onsuccess = function(ev) { d.callback(); };
   var self = this;
   request.onerror = function(ev) {
     var msg = 'removing from ' + self.getName() + ' with key ' +
-        goog.debug.deepExpose(key);
+        goog.debug.deepExpose(keyOrRange);
     d.errback(goog.db.Error.fromRequest(ev.target, msg));
   };
   return d;
@@ -199,9 +195,7 @@ goog.db.ObjectStore.prototype.get = function(key) {
     d.errback(goog.db.Error.fromException(err, msg));
     return d;
   }
-  request.onsuccess = function(ev) {
-    d.callback(ev.target.result);
-  };
+  request.onsuccess = function(ev) { d.callback(ev.target.result); };
   var self = this;
   request.onerror = function(ev) {
     var msg = 'getting from ' + self.getName() + ' with key ' +
@@ -232,23 +226,22 @@ goog.db.ObjectStore.prototype.getAll = function(opt_range, opt_direction) {
   }
 
   var result = [];
-  var key = goog.events.listen(
-      cursor, goog.db.Cursor.EventType.NEW_DATA, function() {
-        result.push(cursor.getValue());
-        cursor.next();
-      });
-
-  goog.events.listenOnce(cursor, [
-    goog.db.Cursor.EventType.ERROR,
-    goog.db.Cursor.EventType.COMPLETE
-  ], function(evt) {
-    cursor.dispose();
-    if (evt.type == goog.db.Cursor.EventType.COMPLETE) {
-      d.callback(result);
-    } else {
-      d.errback();
-    }
+  goog.events.listen(cursor, goog.db.Cursor.EventType.NEW_DATA, function() {
+    result.push(cursor.getValue());
+    cursor.next();
   });
+
+  goog.events.listenOnce(
+      cursor,
+      [goog.db.Cursor.EventType.ERROR, goog.db.Cursor.EventType.COMPLETE],
+      function(evt) {
+        cursor.dispose();
+        if (evt.type == goog.db.Cursor.EventType.COMPLETE) {
+          d.callback(result);
+        } else {
+          d.errback();
+        }
+      });
   return d;
 };
 
@@ -302,9 +295,7 @@ goog.db.ObjectStore.prototype.clear = function() {
     d.errback(goog.db.Error.fromException(err, msg));
     return d;
   }
-  request.onsuccess = function(ev) {
-    d.callback();
-  };
+  request.onsuccess = function(ev) { d.callback(); };
   request.onerror = function(ev) {
     d.errback(goog.db.Error.fromRequest(ev.target, msg));
   };
@@ -313,8 +304,8 @@ goog.db.ObjectStore.prototype.clear = function() {
 
 
 /**
- * Creates an index in this object store. Can only be called inside the callback
- * for the Deferred returned from goog.db.IndexedDb#setVersion.
+ * Creates an index in this object store. Can only be called inside a
+ * {@link goog.db.UpgradeNeededCallback}.
  *
  * @param {string} name Name of the index to create.
  * @param {string} keyPath Attribute to index on.
@@ -322,14 +313,14 @@ goog.db.ObjectStore.prototype.clear = function() {
  *     available option is unique, which defaults to false. If unique is true,
  *     the index will enforce that there is only ever one object in the object
  *     store for each unique value it indexes on.
- * @return {goog.db.Index} The newly created, wrapped index.
+ * @return {!goog.db.Index} The newly created, wrapped index.
  * @throws {goog.db.Error} In case of an error creating the index.
  */
 goog.db.ObjectStore.prototype.createIndex = function(
     name, keyPath, opt_parameters) {
   try {
-    return new goog.db.Index(this.store_.createIndex(
-        name, keyPath, opt_parameters));
+    return new goog.db.Index(
+        this.store_.createIndex(name, keyPath, opt_parameters));
   } catch (ex) {
     var msg = 'creating new index ' + name + ' with key path ' + keyPath;
     throw goog.db.Error.fromException(ex, msg);
@@ -341,7 +332,7 @@ goog.db.ObjectStore.prototype.createIndex = function(
  * Gets an index.
  *
  * @param {string} name Name of the index to fetch.
- * @return {goog.db.Index} The requested wrapped index.
+ * @return {!goog.db.Index} The requested wrapped index.
  * @throws {goog.db.Error} In case of an error getting the index.
  */
 goog.db.ObjectStore.prototype.getIndex = function(name) {
@@ -355,8 +346,8 @@ goog.db.ObjectStore.prototype.getIndex = function(name) {
 
 
 /**
- * Deletes an index from the object store. Can only be called inside the
- * callback for the Deferred returned from goog.db.IndexedDb#setVersion.
+ * Deletes an index from the object store. Can only be called inside a
+ * {@link goog.db.UpgradeNeededCallback}.
  *
  * @param {string} name Name of the index to delete.
  * @throws {goog.db.Error} In case of an error deleting the index.
@@ -379,21 +370,19 @@ goog.db.ObjectStore.prototype.deleteIndex = function(name) {
  * @return {!goog.async.Deferred} The deferred number of records.
  */
 goog.db.ObjectStore.prototype.count = function(opt_range) {
-  var request;
   var d = new goog.async.Deferred();
 
   try {
     var range = opt_range ? opt_range.range() : null;
-    request = this.store_.count(range);
+    var request = this.store_.count(range);
+    request.onsuccess = function(ev) { d.callback(ev.target.result); };
+    var self = this;
+    request.onerror = function(ev) {
+      d.errback(goog.db.Error.fromRequest(ev.target, self.getName()));
+    };
   } catch (ex) {
     d.errback(goog.db.Error.fromException(ex, this.getName()));
   }
-  request.onsuccess = function(ev) {
-    d.callback(ev.target.result);
-  };
-  request.onerror = function(ev) {
-    d.errback(goog.db.Error.fromRequest(ev.target, this.getName()));
-  };
+
   return d;
 };
-

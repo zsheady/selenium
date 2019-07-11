@@ -1,5 +1,8 @@
-// Copyright 2012 Software Freedom Conservancy
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -13,10 +16,12 @@
 
 #include "stdafx.h"
 #include "resource.h"
-#include "IEServer.h"
 #include "CommandLineArguments.h"
+#include "IEServer.h"
 #include <algorithm>
+#include <iostream>
 #include <map>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -24,7 +29,7 @@
 // by the .dll produced by the IEDriver project in this solution.
 // The definitions of these functions can be found in WebDriver.h
 // in that project.
-typedef void* (__cdecl *STARTSERVERPROC)(int, const std::wstring&, const std::wstring&, const std::wstring&, const std::wstring&);
+typedef void* (__cdecl *STARTSERVERPROC)(int, const std::wstring&, const std::wstring&, const std::wstring&, const std::wstring&, const std::wstring&);
 typedef void (__cdecl *STOPSERVERPROC)(void);
 
 #define ERR_DLL_EXTRACT_FAIL 1
@@ -43,6 +48,7 @@ typedef void (__cdecl *STOPSERVERPROC)(void);
 #define LOGFILE_COMMAND_LINE_ARG L"log-file"
 #define SILENT_COMMAND_LINE_ARG L"silent"
 #define EXTRACTPATH_COMMAND_LINE_ARG L"extract-path"
+#define ACL_COMMAND_LINE_ARG L"whitelisted-ips"
 #define BOOLEAN_COMMAND_LINE_ARG_MISSING_VALUE L"value-not-specified"
 
 bool ExtractResource(unsigned short resource_id,
@@ -151,11 +157,13 @@ std::wstring GetExecutableVersion() {
   return static_cast<wchar_t*>(value);
 }
 
+
 void ShowUsage(void) {
   std::wcout << L"Launches the WebDriver server for the Internet Explorer driver" << std::endl
              << std::endl
              << L"IEDriverServer [/port=<port>] [/host=<host>] [/log-level=<level>]" << std::endl
              << L"               [/log-file=<file>] [/extract-path=<path>] [/silent]" << std::endl
+             << L"               [/whitelisted-ips=<whitelisted-ips>] [/version]" << std::endl
              << std::endl
              << L"  /port=<port>  Specifies the port on which the server will listen for" << std::endl
              << L"                commands. Defaults to 5555 if not specified." << std::endl
@@ -172,7 +180,12 @@ void ShowUsage(void) {
              << L"                Specifies the full path to the directory used to extract" << std::endl
              << L"                supporting files used by the server. Defaults to the TEMP" << std::endl
              << L"                directory if not specified." << std::endl
-             << L"  /silent       Suppresses diagnostic output when the server is started." << std::endl;
+             << L"  /silent       Suppresses diagnostic output when the server is started." << std::endl
+             << L"  /whitelisted-ips=<whitelisted-ips>" << std::endl
+             << L"                Comma-separated whitelist of remote IPv4 addresses which" << std::endl
+             << L"                are allowed to connect to the WebDriver server." << std::endl
+             << L"  /version      Displays version information and exits. All other arguments" << std::endl
+             << L"                are ignored." << std::endl;
 }
 
 int _tmain(int argc, _TCHAR* argv[]) {
@@ -194,13 +207,26 @@ int _tmain(int argc, _TCHAR* argv[]) {
   if (extraction_path_arg.size() != 0) {
     extraction_path = extraction_path_arg;
   }
-  
-  unsigned int error_code = ::GetTempFileName(extraction_path.c_str(),
-                                              TEMP_FILE_PREFIX,
-                                              0,
-                                              &temp_file_name_buffer[0]);
 
-  std::wstring temp_file_name(&temp_file_name_buffer[0]);
+  if (extraction_path.size() > 0 &&
+      extraction_path[extraction_path.size() - 1] != L'\\') {
+    extraction_path.append(L"\\");
+  }
+
+  std::wstring initial_file = extraction_path + TEMP_FILE_PREFIX + L".tmp";
+  std::wstring temp_file_name = initial_file;
+  WIN32_FIND_DATA find_file_data;
+  HANDLE file_handle = ::FindFirstFile(initial_file.c_str(), &find_file_data);
+  if (file_handle != INVALID_HANDLE_VALUE) {
+    ::FindClose(file_handle);
+    unsigned int error_code = ::GetTempFileName(extraction_path.c_str(),
+                                                TEMP_FILE_PREFIX,
+                                                0,
+                                                &temp_file_name_buffer[0]);
+
+    temp_file_name = &temp_file_name_buffer[0];
+  }
+
   if (!ExtractResource(IDR_DRIVER_LIBRARY, temp_file_name)) {
     std::wcout << L"Failed to extract the library to temp directory: "
                << temp_file_name;
@@ -231,61 +257,92 @@ int _tmain(int argc, _TCHAR* argv[]) {
   bool silent = args.GetValue(SILENT_COMMAND_LINE_ARG,
       BOOLEAN_COMMAND_LINE_ARG_MISSING_VALUE).size() == 0;
   std::wstring executable_version = GetExecutableVersion();
-  void* server_value = start_server_ex_proc(port,
-                                            host_address,
-                                            log_level,
-                                            log_file,
-                                            executable_version);
-  if (server_value == NULL) {
-    std::wcout << L"Failed to start the server with: "
-               << L"port = '" << port << L"', "
-               << L"host = '" << host_address << L"', "
-               << L"log level = '" << log_level << L"', "
-               << L"log file = '" << log_file << L"'.";
-    return ERR_SERVER_START;
-  }
-  if (!silent) {
-    std::wcout << L"Started InternetExplorerDriver server"
-               << L" (" << GetProcessArchitectureDescription() << L")"
-               << std::endl;
-    std::wcout << executable_version
-               << std::endl;
-    std::wcout << L"Listening on port " << port << std::endl;
-    if (host_address.size() > 0) {
-      std::wcout << L"Bound to network adapter with IP address " 
-                 << host_address
-                 << std::endl;
-    }
-    if (log_level.size() > 0) {
-      std::wcout << L"Log level is set to "
-                 << log_level
-                 << std::endl;
-    }
-    if (log_file.size() > 0) {
-      std::wcout << L"Log file is set to "
-                 << log_file
-                 << std::endl;
-    }
-    if (extraction_path_arg.size() > 0) {
-      std::wcout << L"Library extracted to "
-                 << extraction_path_arg
-                 << std::endl;
-    }
-  }
+  std::wstring executable_architecture = GetProcessArchitectureDescription();
+  std::wstring implementation = L"";
+  std::wstring whitelist = args.GetValue(ACL_COMMAND_LINE_ARG, L"");
 
-  // Create the shutdown event and wait for it to be signaled.
-  DWORD process_id = ::GetCurrentProcessId();
-  vector<wchar_t> process_id_buffer(10);
-  _ltow_s(process_id, &process_id_buffer[0], process_id_buffer.size(), 10);
-  std::wstring process_id_string(&process_id_buffer[0]);
-  std::wstring event_name = IESERVER_SHUTDOWN_EVENT_NAME + process_id_string;
-  HANDLE event_handle = ::CreateEvent(NULL,
-                                      TRUE, 
-                                      FALSE,
-                                      event_name.c_str());
-  ::WaitForSingleObject(event_handle, INFINITE);
-  ::CloseHandle(event_handle);
-  stop_server_proc();
+  // coerce log level and implementation to uppercase, making the values
+  // case-insensitive, to match expected values.
+  std::transform(log_level.begin(),
+                 log_level.end(),
+                 log_level.begin(),
+                 toupper);
+  std::transform(implementation.begin(),
+                 implementation.end(),
+                 implementation.begin(),
+                 toupper);
+
+  if (args.is_version_requested()) {
+    std::wcout << L"IEDriverServer.exe"
+               << L" " << executable_version
+               << L" (" << executable_architecture << L")" << std::endl;
+  } else {
+    void* server_value = start_server_ex_proc(port,
+                                              host_address,
+                                              log_level,
+                                              log_file,
+                                              executable_version + L" (" + executable_architecture + L")",
+                                              whitelist);
+    if (server_value == NULL) {
+      std::wcout << L"Failed to start the server with: "
+                 << L"port = '" << port << L"', "
+                 << L"host = '" << host_address << L"', "
+                 << L"log level = '" << log_level << L"', "
+                 << L"log file = '" << log_file << L"', "
+                 << L"whitelisted ips = '" << whitelist << L"'.";
+      return ERR_SERVER_START;
+    }
+    if (!silent) {
+      std::wcout << L"Started InternetExplorerDriver server"
+                 << L" (" << executable_architecture << L")"
+                 << std::endl;
+      std::wcout << executable_version
+                 << std::endl;
+      std::wcout << L"Listening on port " << port << std::endl;
+      if (host_address.size() > 0) {
+        std::wcout << L"Bound to network adapter with IP address " 
+                   << host_address
+                   << std::endl;
+      }
+      if (log_level.size() > 0) {
+        std::wcout << L"Log level is set to "
+                   << log_level
+                   << std::endl;
+      }
+      if (log_file.size() > 0) {
+        std::wcout << L"Log file is set to "
+                   << log_file
+                   << std::endl;
+      }
+      if (extraction_path_arg.size() > 0) {
+        std::wcout << L"Library extracted to "
+                   << extraction_path_arg
+                   << std::endl;
+      }
+      if (whitelist.size() > 0) {
+        std::wcout << L"IP addresses allowed to connect are "
+                   << whitelist
+                   << std::endl;
+      } else {
+        std::wcout << L"Only local connections are allowed"
+                   << std::endl;
+      }
+    }
+
+    // Create the shutdown event and wait for it to be signaled.
+    DWORD process_id = ::GetCurrentProcessId();
+    vector<wchar_t> process_id_buffer(10);
+    _ltow_s(process_id, &process_id_buffer[0], process_id_buffer.size(), 10);
+    std::wstring process_id_string(&process_id_buffer[0]);
+    std::wstring event_name = IESERVER_SHUTDOWN_EVENT_NAME + process_id_string;
+    HANDLE event_handle = ::CreateEvent(NULL,
+                                        TRUE, 
+                                        FALSE,
+                                        event_name.c_str());
+    ::WaitForSingleObject(event_handle, INFINITE);
+    ::CloseHandle(event_handle);
+    stop_server_proc();
+  }
 
   ::FreeLibrary(module_handle);
   ::DeleteFile(temp_file_name.c_str());

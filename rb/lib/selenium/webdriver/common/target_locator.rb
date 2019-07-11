@@ -1,7 +1,25 @@
+# frozen_string_literal: true
+
+# Licensed to the Software Freedom Conservancy (SFC) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The SFC licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 module Selenium
   module WebDriver
     class TargetLocator
-
       #
       # @api private
       #
@@ -15,7 +33,15 @@ module Selenium
       #
 
       def frame(id)
-        @bridge.switchToFrame id
+        @bridge.switch_to_frame id
+      end
+
+      #
+      # switch to the parent frame
+      #
+
+      def parent_frame
+        @bridge.switch_to_parent_frame
       end
 
       #
@@ -30,23 +56,28 @@ module Selenium
 
       def window(id)
         if block_given?
-          original = @bridge.getCurrentWindowHandle
-          @bridge.switchToWindow id
+          original = begin
+                       @bridge.window_handle
+                     rescue Error::NoSuchWindowError
+                       nil
+                     end
+
+          unless @bridge.window_handles.include? id
+            raise Error::NoSuchWindowError, "The specified identifier '#{id}' is not found in the window handle list"
+          end
+
+          @bridge.switch_to_window id
 
           begin
             returned = yield
           ensure
-            current_handles = @bridge.getWindowHandles
-
-            if current_handles.size == 1
-              original = current_handles.shift
-            end
-
-            @bridge.switchToWindow original
+            current_handles = @bridge.window_handles
+            original = current_handles.first unless current_handles.include? original
+            @bridge.switch_to_window original
             returned
           end
         else
-          @bridge.switchToWindow id
+          @bridge.switch_to_window id
         end
       end
 
@@ -57,7 +88,7 @@ module Selenium
       #
 
       def active_element
-        @bridge.switchToActiveElement
+        @bridge.switch_to_active_element
       end
 
       #
@@ -65,7 +96,7 @@ module Selenium
       #
 
       def default_content
-        @bridge.switchToDefaultContent
+        @bridge.switch_to_default_content
       end
 
       #
@@ -75,7 +106,6 @@ module Selenium
       def alert
         Alert.new(@bridge)
       end
-
     end # TargetLocator
   end # WebDriver
-end  # Selenium
+end # Selenium

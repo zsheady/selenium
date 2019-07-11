@@ -14,6 +14,7 @@
 
 /**
  * @fileoverview goog.events.EventTarget tester.
+ * @author chrishenry@google.com (Chris Henry)
  */
 
 goog.provide('goog.events.eventTargetTester');
@@ -34,6 +35,8 @@ goog.require('goog.testing.recordFunction');
 /**
  * Setup step for the test functions. This needs to be called from the
  * test setUp.
+ * @param {function():!goog.events.Listenable} listenableFactoryFn Function
+ *     that will return a new Listenable instance each time it is called.
  * @param {Function} listenFn Function that, given the same signature
  *     as goog.events.listen, will add listener to the given event
  *     target.
@@ -71,10 +74,10 @@ goog.require('goog.testing.recordFunction');
  *     Object is supported.
  */
 goog.events.eventTargetTester.setUp = function(
-    listenFn, unlistenFn, unlistenByKeyFn, listenOnceFn,
-    dispatchEventFn, removeAllFn,
-    getListenersFn, getListenerFn, hasListenerFn,
+    listenableFactoryFn, listenFn, unlistenFn, unlistenByKeyFn, listenOnceFn,
+    dispatchEventFn, removeAllFn, getListenersFn, getListenerFn, hasListenerFn,
     listenKeyType, unlistenFnReturnType, objectListenerSupported) {
+  listenableFactory = listenableFactoryFn;
   listen = listenFn;
   unlisten = unlistenFn;
   unlistenByKey = unlistenByKeyFn;
@@ -95,7 +98,7 @@ goog.events.eventTargetTester.setUp = function(
 
   eventTargets = [];
   for (i = 0; i < goog.events.eventTargetTester.MAX_; i++) {
-    eventTargets[i] = new goog.events.EventTarget();
+    eventTargets[i] = listenableFactory();
   }
 };
 
@@ -130,6 +133,7 @@ goog.events.eventTargetTester.KeyType = {
 
 /**
  * The type of unlisten function's return value.
+ * @enum {number}
  */
 goog.events.eventTargetTester.UnlistenReturnType = {
   /**
@@ -182,8 +186,8 @@ var EventType = {
 };
 
 
-var listen, unlisten, unlistenByKey, listenOnce, dispatchEvent;
-var removeAll, getListeners, getListener, hasListener;
+var listenableFactory, listen, unlisten, unlistenByKey, listenOnce;
+var dispatchEvent, removeAll, getListeners, getListener, hasListener;
 var keyType, unlistenReturnType, objectTypeListenerSupported;
 var eventTargets, listeners;
 
@@ -193,9 +197,10 @@ var eventTargets, listeners;
  * Custom event object for testing.
  * @constructor
  * @extends {goog.events.Event}
+ * @final
  */
 var TestEvent = function() {
-  goog.base(this, EventType.A);
+  TestEvent.base(this, 'constructor', EventType.A);
 };
 goog.inherits(TestEvent, goog.events.Event);
 
@@ -217,8 +222,9 @@ function createListener(opt_listenerFn) {
  *     function below.
  */
 function assertListenerIsCalled(listener, numCount) {
-  assertEquals('Listeners is not called the correct number of times.',
-               numCount, listener.getCallCount());
+  assertEquals(
+      'Listeners is not called the correct number of times.', numCount,
+      listener.getCallCount());
   listener[goog.events.eventTargetTester.ALREADY_CHECKED_PROP] = true;
   listener[goog.events.eventTargetTester.NUM_CALLED_PROP] = numCount;
 }
@@ -233,8 +239,8 @@ function assertNoOtherListenerIsCalled() {
   goog.array.forEach(listeners, function(l, index) {
     if (!l[goog.events.eventTargetTester.ALREADY_CHECKED_PROP]) {
       assertEquals(
-          'Listeners ' + index + ' is unexpectedly called.',
-          0, l.getCallCount());
+          'Listeners ' + index + ' is unexpectedly called.', 0,
+          l.getCallCount());
     } else {
       assertEquals(
           'Listeners ' + index + ' is unexpectedly called.',
@@ -383,6 +389,9 @@ function testDispatchEventWithCustomEventObject() {
 
 
 function testDisposingEventTargetRemovesListeners() {
+  if (!(listenableFactory() instanceof goog.events.EventTarget)) {
+    return;
+  }
   listen(eventTargets[0], EventType.A, listeners[0]);
   goog.dispose(eventTargets[0]);
   dispatchEvent(eventTargets[0], EventType.A);
@@ -452,27 +461,24 @@ function testCapture() {
   eventTargets[9].setParentEventTarget(eventTargets[0]);
 
   var ordering = 0;
-  listeners[0] = createListener(
-      function(e) {
-        assertEquals(eventTargets[2], e.currentTarget);
-        assertEquals(eventTargets[0], e.target);
-        assertEquals('First capture listener is not called first', 0, ordering);
-        ordering++;
-      });
-  listeners[1] = createListener(
-      function(e) {
-        assertEquals(eventTargets[1], e.currentTarget);
-        assertEquals(eventTargets[0], e.target);
-        assertEquals('2nd capture listener is not called 2nd', 1, ordering);
-        ordering++;
-      });
-  listeners[2] = createListener(
-      function(e) {
-        assertEquals(eventTargets[0], e.currentTarget);
-        assertEquals(eventTargets[0], e.target);
-        assertEquals('3rd capture listener is not called 3rd', 2, ordering);
-        ordering++;
-      });
+  listeners[0] = createListener(function(e) {
+    assertEquals(eventTargets[2], e.currentTarget);
+    assertEquals(eventTargets[0], e.target);
+    assertEquals('First capture listener is not called first', 0, ordering);
+    ordering++;
+  });
+  listeners[1] = createListener(function(e) {
+    assertEquals(eventTargets[1], e.currentTarget);
+    assertEquals(eventTargets[0], e.target);
+    assertEquals('2nd capture listener is not called 2nd', 1, ordering);
+    ordering++;
+  });
+  listeners[2] = createListener(function(e) {
+    assertEquals(eventTargets[0], e.currentTarget);
+    assertEquals(eventTargets[0], e.target);
+    assertEquals('3rd capture listener is not called 3rd', 2, ordering);
+    ordering++;
+  });
 
   listen(eventTargets[2], EventType.A, listeners[0], true);
   listen(eventTargets[1], EventType.A, listeners[1], true);
@@ -503,27 +509,24 @@ function testBubble() {
   eventTargets[9].setParentEventTarget(eventTargets[0]);
 
   var ordering = 0;
-  listeners[0] = createListener(
-      function(e) {
-        assertEquals(eventTargets[0], e.currentTarget);
-        assertEquals(eventTargets[0], e.target);
-        assertEquals('First bubble listener is not called first', 0, ordering);
-        ordering++;
-      });
-  listeners[1] = createListener(
-      function(e) {
-        assertEquals(eventTargets[1], e.currentTarget);
-        assertEquals(eventTargets[0], e.target);
-        assertEquals('2nd bubble listener is not called 2nd', 1, ordering);
-        ordering++;
-      });
-  listeners[2] = createListener(
-      function(e) {
-        assertEquals(eventTargets[2], e.currentTarget);
-        assertEquals(eventTargets[0], e.target);
-        assertEquals('3rd bubble listener is not called 3rd', 2, ordering);
-        ordering++;
-      });
+  listeners[0] = createListener(function(e) {
+    assertEquals(eventTargets[0], e.currentTarget);
+    assertEquals(eventTargets[0], e.target);
+    assertEquals('First bubble listener is not called first', 0, ordering);
+    ordering++;
+  });
+  listeners[1] = createListener(function(e) {
+    assertEquals(eventTargets[1], e.currentTarget);
+    assertEquals(eventTargets[0], e.target);
+    assertEquals('2nd bubble listener is not called 2nd', 1, ordering);
+    ordering++;
+  });
+  listeners[2] = createListener(function(e) {
+    assertEquals(eventTargets[2], e.currentTarget);
+    assertEquals(eventTargets[0], e.target);
+    assertEquals('3rd bubble listener is not called 3rd', 2, ordering);
+    ordering++;
+  });
 
   listen(eventTargets[0], EventType.A, listeners[0]);
   listen(eventTargets[1], EventType.A, listeners[1]);
@@ -722,11 +725,10 @@ function testListenOnce() {
 
 
 function testUnlistenInListen() {
-  listeners[1] = createListener(
-      function(e) {
-        unlisten(eventTargets[0], EventType.A, listeners[1]);
-        unlisten(eventTargets[0], EventType.A, listeners[2]);
-      });
+  listeners[1] = createListener(function(e) {
+    unlisten(eventTargets[0], EventType.A, listeners[1]);
+    unlisten(eventTargets[0], EventType.A, listeners[2]);
+  });
   listen(eventTargets[0], EventType.A, listeners[0]);
   listen(eventTargets[0], EventType.A, listeners[1]);
   listen(eventTargets[0], EventType.A, listeners[2]);
@@ -756,11 +758,10 @@ function testUnlistenByKeyInListen() {
   }
 
   var key1, key2;
-  listeners[1] = createListener(
-      function(e) {
-        unlistenByKey(eventTargets[0], key1);
-        unlistenByKey(eventTargets[0], key2);
-      });
+  listeners[1] = createListener(function(e) {
+    unlistenByKey(eventTargets[0], key1);
+    unlistenByKey(eventTargets[0], key2);
+  });
   listen(eventTargets[0], EventType.A, listeners[0]);
   key1 = listen(eventTargets[0], EventType.A, listeners[1]);
   key2 = listen(eventTargets[0], EventType.A, listeners[2]);
@@ -927,6 +928,31 @@ function testRemoveAll() {
 }
 
 
+function testRemoveAllCallsMarkAsRemoved() {
+  if (!removeAll) {
+    return;
+  }
+
+  var key0 = listen(eventTargets[0], EventType.A, listeners[0]);
+  var key1 = listen(eventTargets[1], EventType.A, listeners[1]);
+
+  assertNotNullNorUndefined(key0.listener);
+  assertFalse(key0.removed);
+  assertNotNullNorUndefined(key1.listener);
+  assertFalse(key1.removed);
+
+  assertEquals(1, removeAll(eventTargets[0]));
+  assertNull(key0.listener);
+  assertTrue(key0.removed);
+  assertNotNullNorUndefined(key1.listener);
+  assertFalse(key1.removed);
+
+  assertEquals(1, removeAll(eventTargets[1]));
+  assertNull(key1.listener);
+  assertTrue(key1.removed);
+}
+
+
 function testGetListeners() {
   if (!getListeners) {
     return;
@@ -960,8 +986,7 @@ function testGetListener() {
   listen(eventTargets[0], EventType.A, listeners[0], true);
 
   assertNotNull(getListener(eventTargets[0], EventType.A, listeners[0], true));
-  assertNull(
-      getListener(eventTargets[0], EventType.A, listeners[0], true, {}));
+  assertNull(getListener(eventTargets[0], EventType.A, listeners[0], true, {}));
   assertNull(getListener(eventTargets[1], EventType.A, listeners[0], true));
   assertNull(getListener(eventTargets[0], EventType.B, listeners[0], true));
   assertNull(getListener(eventTargets[0], EventType.A, listeners[1], true));
@@ -993,15 +1018,14 @@ function testFiringEventBeforeDisposeInternalWorks() {
   /**
    * @extends {goog.events.EventTarget}
    * @constructor
+   * @final
    */
-  var MockTarget = function() {
-    goog.base(this);
-  };
+  var MockTarget = function() { MockTarget.base(this, 'constructor'); };
   goog.inherits(MockTarget, goog.events.EventTarget);
 
   MockTarget.prototype.disposeInternal = function() {
     dispatchEvent(this, EventType.A);
-    goog.base(this, 'disposeInternal');
+    MockTarget.base(this, 'disposeInternal');
   };
 
   var t = new MockTarget();
@@ -1016,7 +1040,7 @@ function testFiringEventBeforeDisposeInternalWorks() {
 
 
 function testLoopDetection() {
-  var target = new goog.events.EventTarget();
+  var target = listenableFactory();
   target.setParentEventTarget(target);
 
   try {

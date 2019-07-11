@@ -1,17 +1,20 @@
-# Copyright 2008-2011 WebDriver committers
-# Copyright 2008-2011 Google Inc.
+# Licensed to the Software Freedom Conservancy (SFC) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The SFC licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 from __future__ import with_statement
 
 import base64
@@ -20,24 +23,26 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import zipfile
 
 try:
     from cStringIO import StringIO as BytesIO
-    bytes = str
-    str = unicode
 except ImportError:
     from io import BytesIO
 
 from xml.dom import minidom
-from selenium.webdriver.common.proxy import ProxyType
 from selenium.common.exceptions import WebDriverException
 
 
 WEBDRIVER_EXT = "webdriver.xpi"
 WEBDRIVER_PREFERENCES = "webdriver_prefs.json"
 EXTENSION_NAME = "fxdriver@googlecode.com"
+
+
+class AddonFormatError(Exception):
+    """Exception for not well-formed add-on manifest files"""
 
 
 class FirefoxProfile(object):
@@ -49,7 +54,9 @@ class FirefoxProfile(object):
         Initialises a new instance of a Firefox Profile
 
         :args:
-         - profile_directory: Directory of profile that you want to use.
+         - profile_directory: Directory of profile that you want to use. If a
+           directory is passed in it will be cloned and the cloned directory
+           will be used by the driver when instantiated.
            This defaults to None and will create a new
            directory when object is created.
         """
@@ -60,7 +67,6 @@ class FirefoxProfile(object):
 
         self.default_preferences = copy.deepcopy(
             FirefoxProfile.DEFAULT_PREFERENCES['mutable'])
-        self.native_events_enabled = True
         self.profile_dir = profile_directory
         self.tempfolder = None
         if self.profile_dir is None:
@@ -71,11 +77,14 @@ class FirefoxProfile(object):
             shutil.copytree(self.profile_dir, newprof,
                             ignore=shutil.ignore_patterns("parent.lock", "lock", ".parentlock"))
             self.profile_dir = newprof
+            os.chmod(self.profile_dir, 0o755)
             self._read_existing_userjs(os.path.join(self.profile_dir, "user.js"))
         self.extensionsDir = os.path.join(self.profile_dir, "extensions")
         self.userPrefs = os.path.join(self.profile_dir, "user.js")
+        if os.path.isfile(self.userPrefs):
+            os.chmod(self.userPrefs, 0o644)
 
-    #Public Methods
+    # Public Methods
     def set_preference(self, key, value):
         """
         sets the preference that we want in the profile.
@@ -90,7 +99,7 @@ class FirefoxProfile(object):
             self.default_preferences[key] = value
         self._write_user_prefs(self.default_preferences)
 
-    #Properties
+    # Properties
 
     @property
     def path(self):
@@ -117,7 +126,7 @@ class FirefoxProfile(object):
             port = int(port)
             if port < 1 or port > 65535:
                 raise WebDriverException("Port number must be in the range 1..65535")
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError):
             raise WebDriverException("Port needs to be an integer")
         self._port = port
         self.set_preference("webdriver_firefox_port", self._port)
@@ -144,21 +153,12 @@ class FirefoxProfile(object):
         self.set_preference("webdriver_assume_untrusted_issuer", value)
 
     @property
-    def native_events_enabled(self):
-        return self.default_preferences['webdriver_enable_native_events']
-
-    @native_events_enabled.setter
-    def native_events_enabled(self, value):
-        if value not in [True, False]:
-            raise WebDriverException("Please pass in a Boolean to this call")
-        self.set_preference("webdriver_enable_native_events", value)
-
-    @property
     def encoded(self):
         """
         A zipped, base64 encoded string of profile directory
         for use with remote WebDriver JSON wire protocol
         """
+        self.update_preferences()
         fp = BytesIO()
         zipped = zipfile.ZipFile(fp, 'w', zipfile.ZIP_DEFLATED)
         path_root = len(self.path) + 1  # account for trailing slash
@@ -167,39 +167,7 @@ class FirefoxProfile(object):
                 filename = os.path.join(base, fyle)
                 zipped.write(filename, filename[path_root:])
         zipped.close()
-        return base64.encodestring(fp.getvalue())
-
-    def set_proxy(self, proxy):
-        import warnings
-
-        warnings.warn(
-            "This method has been deprecated. Please pass in the proxy object to the Driver Object",
-            DeprecationWarning)
-        if proxy is None:
-            raise ValueError("proxy can not be None")
-
-        if proxy.proxy_type is ProxyType.UNSPECIFIED:
-            return
-
-        self.set_preference("network.proxy.type", proxy.proxy_type['ff_value'])
-
-        if proxy.proxy_type is ProxyType.MANUAL:
-            self.set_preference("network.proxy.no_proxies_on", proxy.no_proxy)
-            self._set_manual_proxy_preference("ftp", proxy.ftp_proxy)
-            self._set_manual_proxy_preference("http", proxy.http_proxy)
-            self._set_manual_proxy_preference("ssl", proxy.ssl_proxy)
-            self._set_manual_proxy_preference("socks", proxy.socks_proxy)
-        elif proxy.proxy_type is ProxyType.PAC:
-            self.set_preference("network.proxy.autoconfig_url", proxy.proxy_autoconfig_url)
-
-    def _set_manual_proxy_preference(self, key, setting):
-        if setting is None or setting is '':
-            return
-
-        host_details = setting.split(":")
-        self.set_preference("network.proxy.%s" % key, host_details[0])
-        if len(host_details) > 1:
-            self.set_preference("network.proxy.%s_port" % key, int(host_details[1]))
+        return base64.b64encode(fp.getvalue()).decode('UTF-8')
 
     def _create_tempfolder(self):
         """
@@ -225,10 +193,10 @@ class FirefoxProfile(object):
                     matches = re.search(PREF_RE, usr)
                     try:
                         self.default_preferences[matches.group(1)] = json.loads(matches.group(2))
-                    except:
+                    except Exception:
                         warnings.warn("(skipping) failed to json.loads existing preference: " +
                                       matches.group(1) + matches.group(2))
-        except:
+        except Exception:
             # The profile given hasn't had any changes made, i.e no users.js
             pass
 
@@ -236,7 +204,7 @@ class FirefoxProfile(object):
         """
             Installs addon from a filepath, url
             or directory of addons in the profile.
-            - path: url, path to .xpi, or directory of addons
+            - path: url, absolute path to .xpi, or directory of addons
             - unpack: whether to unpack unless specified otherwise in the install.rdf
         """
         if addon == WEBDRIVER_EXT:
@@ -249,7 +217,8 @@ class FirefoxProfile(object):
             compressed_file = zipfile.ZipFile(addon, 'r')
             for name in compressed_file.namelist():
                 if name.endswith('/'):
-                    os.makedirs(os.path.join(tmpdir, name))
+                    if not os.path.isdir(os.path.join(tmpdir, name)):
+                        os.makedirs(os.path.join(tmpdir, name))
                 else:
                     if not os.path.isdir(os.path.dirname(os.path.join(tmpdir, name))):
                         os.makedirs(os.path.dirname(os.path.join(tmpdir, name)))
@@ -265,14 +234,15 @@ class FirefoxProfile(object):
         assert addon_id, 'The addon id could not be found: %s' % addon
 
         # copy the addon to the profile
-        extensions_path = os.path.join(self.profile_dir, 'extensions')
-        addon_path = os.path.join(extensions_path, addon_id)
+        addon_path = os.path.join(self.extensionsDir, addon_id)
         if not unpack and not addon_details['unpack'] and xpifile:
-            if not os.path.exists(extensions_path):
-                os.makedirs(extensions_path)
+            if not os.path.exists(self.extensionsDir):
+                os.makedirs(self.extensionsDir)
+                os.chmod(self.extensionsDir, 0o755)
             shutil.copy(xpifile, addon_path + '.xpi')
         else:
-            shutil.copytree(addon, addon_path, symlinks=True)
+            if not os.path.exists(addon_path):
+                shutil.copytree(addon, addon_path, symlinks=True)
 
         # remove the temporary directory, if any
         if tmpdir:
@@ -280,20 +250,22 @@ class FirefoxProfile(object):
 
     def _addon_details(self, addon_path):
         """
-            returns a dictionary of details about the addon
-            - addon_path : path to the addon directory
-            Returns:
-            {'id': 'rainbow@colors.org', # id of the addon
-            'version': '1.4', # version of the addon
-            'name': 'Rainbow', # name of the addon
-            'unpack': False } # whether to unpack the addon
+        Returns a dictionary of details about the addon.
+
+        :param addon_path: path to the add-on directory or XPI
+
+        Returns::
+
+            {'id':      u'rainbow@colors.org', # id of the addon
+             'version': u'1.4',                # version of the addon
+             'name':    u'Rainbow',            # name of the addon
+             'unpack':  False }                # whether to unpack the addon
         """
 
-        # TODO: We don't use the unpack variable yet, but we should: bug 662683
         details = {
             'id': None,
+            'unpack': False,
             'name': None,
-            'unpack': True,
             'version': None
         }
 
@@ -316,17 +288,77 @@ class FirefoxProfile(object):
                     rc.append(node.data)
             return ''.join(rc).strip()
 
-        doc = minidom.parse(os.path.join(addon_path, 'install.rdf'))
+        def parse_manifest_json(content):
+            """Extracts the details from the contents of a WebExtensions `manifest.json` file."""
+            manifest = json.loads(content)
+            try:
+                id = manifest['applications']['gecko']['id']
+            except KeyError:
+                id = manifest['name'].replace(" ", "") + "@" + manifest['version']
+            return {
+                'id': id,
+                'version': manifest['version'],
+                'name': manifest['version'],
+                'unpack': False,
+            }
 
-        # Get the namespaces abbreviations
-        em = get_namespace_id(doc, "http://www.mozilla.org/2004/em-rdf#")
-        rdf = get_namespace_id(doc, "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+        if not os.path.exists(addon_path):
+            raise IOError('Add-on path does not exist: %s' % addon_path)
 
-        description = doc.getElementsByTagName(rdf + "Description").item(0)
-        for node in description.childNodes:
-            # Remove the namespace prefix from the tag for comparison
-            entry = node.nodeName.replace(em, "")
-            if entry in details.keys():
-                details.update({entry: get_text(node)})
+        try:
+            if zipfile.is_zipfile(addon_path):
+                # Bug 944361 - We cannot use 'with' together with zipFile because
+                # it will cause an exception thrown in Python 2.6.
+                try:
+                    compressed_file = zipfile.ZipFile(addon_path, 'r')
+                    if 'manifest.json' in compressed_file.namelist():
+                        return parse_manifest_json(compressed_file.read('manifest.json'))
+
+                    manifest = compressed_file.read('install.rdf')
+                finally:
+                    compressed_file.close()
+            elif os.path.isdir(addon_path):
+                manifest_json_filename = os.path.join(addon_path, 'manifest.json')
+                if os.path.exists(manifest_json_filename):
+                    with open(manifest_json_filename, 'r') as f:
+                        return parse_manifest_json(f.read())
+
+                with open(os.path.join(addon_path, 'install.rdf'), 'r') as f:
+                    manifest = f.read()
+            else:
+                raise IOError('Add-on path is neither an XPI nor a directory: %s' % addon_path)
+        except (IOError, KeyError) as e:
+            raise AddonFormatError(str(e), sys.exc_info()[2])
+
+        try:
+            doc = minidom.parseString(manifest)
+
+            # Get the namespaces abbreviations
+            em = get_namespace_id(doc, 'http://www.mozilla.org/2004/em-rdf#')
+            rdf = get_namespace_id(doc, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#')
+
+            description = doc.getElementsByTagName(rdf + 'Description').item(0)
+            if description is None:
+                description = doc.getElementsByTagName('Description').item(0)
+            for node in description.childNodes:
+                # Remove the namespace prefix from the tag for comparison
+                entry = node.nodeName.replace(em, "")
+                if entry in details.keys():
+                    details.update({entry: get_text(node)})
+            if details.get('id') is None:
+                for i in range(description.attributes.length):
+                    attribute = description.attributes.item(i)
+                    if attribute.name == em + 'id':
+                        details.update({'id': attribute.value})
+        except Exception as e:
+            raise AddonFormatError(str(e), sys.exc_info()[2])
+
+        # turn unpack into a true/false value
+        if isinstance(details['unpack'], str):
+            details['unpack'] = details['unpack'].lower() == 'true'
+
+        # If no ID is set, the add-on is invalid
+        if details.get('id') is None:
+            raise AddonFormatError('Add-on id could not be found.')
 
         return details

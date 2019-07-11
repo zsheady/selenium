@@ -4,29 +4,34 @@
   <title>type_test</title>
   <script src="test_bootstrap.js"></script>
   <script type="text/javascript">
-    goog.require('bot.Keyboard.Keys');
+    goog.require('bot.Keyboard');
     goog.require('bot.action');
     goog.require('bot.events');
     goog.require('bot.userAgent');
+    goog.require('goog.Promise');
     goog.require('goog.events');
     goog.require('goog.events.EventType');
     goog.require('goog.events.KeyCodes');
-    goog.require('goog.testing.AsyncTestCase');
     goog.require('goog.testing.ExpectedFailures');
     goog.require('goog.testing.jsunit');
     goog.require('goog.userAgent');
   </script>
   <script type="text/javascript">
-    var asyncTestCase = null;
-
-    // In Opera 11.5, synthetic keypresses currently exhibit flaky failures:
-    // http://code.google.com/p/selenium/issues/detail?id=3068
-    // Most typing test methods below are skipped for these versions.
-    var BROKEN_KEYPRESS = goog.userAgent.OPERA &&
-        bot.userAgent.isEngineVersion(11.5) &&
-        !bot.userAgent.isEngineVersion(12);
-
     var INPUT_IDS = ['textbox', 'password', 'email', 'search', 'textarea'];
+
+    // Keys that impact the cursor's position and require the selection API.
+    var SELECTION_KEYS = [
+      bot.Keyboard.Keys.BACKSPACE,
+      bot.Keyboard.Keys.DELETE,
+      bot.Keyboard.Keys.PAGE_UP,
+      bot.Keyboard.Keys.PAGE_DOWN,
+      bot.Keyboard.Keys.END,
+      bot.Keyboard.Keys.HOME,
+      bot.Keyboard.Keys.LEFT,
+      bot.Keyboard.Keys.UP,
+      bot.Keyboard.Keys.RIGHT,
+      bot.Keyboard.Keys.DOWN,
+    ];
 
     var ALT = bot.Keyboard.Keys.ALT;
     var BACKSPACE = bot.Keyboard.Keys.BACKSPACE;
@@ -52,8 +57,6 @@
     var expectedFailures;
 
     function setUp() {
-      goog.testing.AsyncTestCase.ControlBreakingException.prototype.
-          isJsUnitException = function() { return true; };
       expectedFailures = new goog.testing.ExpectedFailures();
     }
 
@@ -83,7 +86,7 @@
      * have the correct values afterwards.  textbox_count should display the
      * number of times textbox's oninput (non IE) or onpropertychange (IE) event
      * fired.
-     * @param {string|bot.Keyboard.Key|Array.<string, bot.Keyboard.Key>}
+     * @param {string|bot.Keyboard.Key|Array.<(string|bot.Keyboard.Key)>}
      *   input Value to type into textbox.
      * @param {string=} opt_finalValue The final value that should appear in
      *   the input.  Defaults to input.
@@ -98,9 +101,6 @@
      */
     function runTypingTest(input, opt_finalValue, opt_inputCount,
                            opt_textInputCount, opt_inputIds, opt_initValue) {
-      if (BROKEN_KEYPRESS) {
-        return;
-      }
       var inputIds = opt_inputIds ? opt_inputIds : INPUT_IDS;
       var inputCountBox = document.getElementById('inputCount');
       var textInputCountBox = document.getElementById('textInputCount');
@@ -111,8 +111,23 @@
           goog.isDef(opt_textInputCount) ? opt_textInputCount : inputCount;
       var initValue = opt_initValue || '';
 
+      // Determine if our test requires updating the cursor position, which is
+      // not supported in all scenarios.
+      var needsSelection = function(input) {
+        if (goog.isArray(input)) {
+          return goog.array.some(input, needsSelection);
+        }
+        return goog.array.contains(SELECTION_KEYS, input);
+      }
+      var requiresSelection = goog.array.some(input, needsSelection);
+
       for (var i = 0; i < inputIds.length; i++) {
         var inputBox = document.getElementById(inputIds[i]);
+        if (requiresSelection && !bot.Keyboard.supportsSelection(inputBox)) {
+          // Test requires selection, but the current element will throw when
+          // accessing those properties, so skip this case.
+          continue;
+        }
         inputBox.value = initValue;
         inputCountBox.value = '0';
         textInputCountBox.value = '0';
@@ -358,10 +373,7 @@
     }
 
     function testEnterTextArea() {
-      var newline =
-          (bot.userAgent.IE_DOC_PRE9 ||
-           (goog.userAgent.OPERA &&
-            !goog.userAgent.isVersionOrHigher(12))) ? '\r\n' : '\n';
+      var newline = bot.userAgent.IE_DOC_PRE9 ? '\r\n' : '\n';
       var finalText = 'asdf' + newline + 'qwer';
       runTypingTest(['asdf', ENTER, 'qwer'], finalText, 9, 9, ['textarea']);
     }
@@ -392,13 +404,13 @@
         var input = document.getElementById(INPUT_IDS[i]);
         input.disabled = true;
       }
-      continueAfterDelayInIE7('disabled = true', function() {
+      return yieldInIE7().then(function() {
         for (var i = 0; i < INPUT_IDS.length; i++) {
           var input = document.getElementById(INPUT_IDS[i]);
           assertThrows(goog.partial(bot.action.type, input, 'a'));
           input.disabled = false;
         }
-        continueAfterDelayInIE7('disabled = false');
+        return yieldInIE7();
       });
     }
 
@@ -407,13 +419,13 @@
         var input = document.getElementById(INPUT_IDS[i]);
         input.readOnly = true;
       }
-      continueAfterDelayInIE7('readonly = true', function() {
+      return yieldInIE7().then(function() {
         runTypingTest('text not added', '', 0, 0, ['textbox']);
         for (var i = 0; i < INPUT_IDS.length; i++) {
           var input = document.getElementById(INPUT_IDS[i]);
           input.readOnly = false;
         }
-        continueAfterDelayInIE7('readonly = false');
+        return yieldInIE7();
       });
     }
 
@@ -431,18 +443,15 @@
      * executes the optionally-provided function after a fixed delay. For all
      * other browsers, it just executes the function straightaway.
      */
-    function continueAfterDelayInIE7(desc, opt_fn) {
-      if (goog.userAgent.IE && !bot.userAgent.isEngineVersion(8)) {
-        asyncTestCase.waitForAsync('waiting for ' + desc);
-        window.setTimeout(function() {
-          asyncTestCase.continueTesting();
-          if (opt_fn) {
-            opt_fn();
-          }
-        }, 500);
-      } else if (opt_fn) {
-        opt_fn();
-      }
+    function yieldInIE7() {
+      return new goog.Promise(function(done) {
+        goog.testing.TestCase.getActiveTestCase().promiseTimeout = 5000;
+        if (goog.userAgent.IE && !bot.userAgent.isEngineVersion(8)) {
+          setTimeout(done, 500);
+        } else {
+          done();
+        }
+      });
     }
 
     function testPersistentModifiers() {
@@ -491,9 +500,8 @@
     <div style="width:0px;height:0px;overflow:hidden;">
       <input type="text" id="hiddenInput"/>
     </div>
+
+    <div contenteditable="true">Hello</div>
   </form>
 </body>
-<script type="text/javascript">
-  asyncTestCase = goog.testing.AsyncTestCase.createAndInstall();
-</script>
 </html>

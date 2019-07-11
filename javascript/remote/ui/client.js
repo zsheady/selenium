@@ -1,26 +1,30 @@
-// Copyright 2012 Software Freedom Conservancy. All Rights Reserved.
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 goog.provide('remote.ui.Client');
 
 goog.require('bot.response');
 goog.require('goog.Disposable');
+goog.require('goog.Promise');
 goog.require('goog.Uri');
 goog.require('goog.array');
 goog.require('goog.debug.Console');
-goog.require('goog.debug.Logger');
 goog.require('goog.events');
+goog.require('goog.log');
 goog.require('remote.ui.Banner');
 goog.require('remote.ui.Event.Type');
 goog.require('remote.ui.ScreenshotDialog');
@@ -30,7 +34,6 @@ goog.require('remote.ui.WebDriverScriptButton');
 goog.require('webdriver.Command');
 goog.require('webdriver.CommandName');
 goog.require('webdriver.Session');
-goog.require('webdriver.promise');
 
 
 
@@ -45,8 +48,8 @@ goog.require('webdriver.promise');
 remote.ui.Client = function(url, executor) {
   goog.base(this);
 
-  /** @private {!goog.debug.Logger} */
-  this.log_ = goog.debug.Logger.getLogger('remote.ui.Client');
+  /** @private {goog.log.Logger} */
+  this.log_ = goog.log.getLogger('remote.ui.Client');
 
   /** @private {!goog.debug.Console} */
   this.logConsole_ = new goog.debug.Console();
@@ -100,7 +103,7 @@ goog.inherits(remote.ui.Client, goog.Disposable);
  *
  * @type {!Array.<string>}
  * @const
- * @see http://code.google.com/p/selenium/wiki/DesiredCapabilities
+ * @see https://github.com/SeleniumHQ/selenium/wiki/DesiredCapabilities
  */
 remote.ui.Client.SUPPORTED_BROWSERS = [
   'android',
@@ -136,7 +139,7 @@ remote.ui.Client.prototype.disposeInternal = function() {
  * Initializes the client and renders it into the DOM.
  * @param {!Element=} opt_element The element to render to; defaults to the
  *     current document's BODY element.
- * @return {!webdriver.promise.Promise} A promise that will be resolved when
+ * @return {!goog.Promise} A promise that will be resolved when
  *     the client has been initialized.
  */
 remote.ui.Client.prototype.init = function(opt_element) {
@@ -147,11 +150,10 @@ remote.ui.Client.prototype.init = function(opt_element) {
   this.scriptButton_.render();
   this.sessionContainer_.addControlElement(
       /** @type {!Element} */(this.scriptButton_.getElement()));
-  return this.updateServerInfo_().
-      addCallback(function() {
-        this.sessionContainer_.setEnabled(true);
-        this.onRefresh_();
-      }, this);
+  return this.updateServerInfo_().then(goog.bind(function() {
+    this.sessionContainer_.setEnabled(true);
+    this.onRefresh_();
+  }, this));
 };
 
 
@@ -164,14 +166,13 @@ remote.ui.Client.prototype.getSessionContainer = function() {
 /**
  * Executes a single command.
  * @param {!webdriver.Command} command The command to execute.
- * @return {!webdriver.promise.Promise} A promise that will be resolved with the
+ * @return {!goog.Promise} A promise that will be resolved with the
  *     command response.
  * @private
  */
 remote.ui.Client.prototype.execute_ = function(command) {
   this.banner_.setVisible(false);
-  var fn = goog.bind(this.executor_.execute, this.executor_, command);
-  return webdriver.promise.checkedNodeCall(fn).
+  return this.executor_.execute(command).
       then(bot.response.checkResponse);
 };
 
@@ -183,23 +184,23 @@ remote.ui.Client.prototype.execute_ = function(command) {
  * @private
  */
 remote.ui.Client.prototype.logError_ = function(msg, e) {
-  this.log_.severe(msg + '\n' + e);
-  this.banner_.setMessage(msg);
+  goog.log.error(this.log_, msg + '\n' + e);
+  this.banner_.setMessage(msg + '\n\n' + e);
   this.banner_.setVisible(true);
 };
 
 
 /**
  * Queries the server for its build info.
- * @return {!webdriver.promise.Promise} A promise that will be resolved with the
+ * @return {!goog.Promise} A promise that will be resolved with the
  *     server build info.
  * @private
  */
 remote.ui.Client.prototype.updateServerInfo_ = function() {
-  this.log_.info('Retrieving server status...');
+  goog.log.info(this.log_, 'Retrieving server status...');
   return this.execute_(
       new webdriver.Command(webdriver.CommandName.GET_SERVER_STATUS)).
-      addCallback(function(response) {
+      then(goog.bind(function(response) {
         var value = response['value'] || {};
         var os = value['os'];
         if (os && os['name']) {
@@ -208,7 +209,7 @@ remote.ui.Client.prototype.updateServerInfo_ = function() {
         var build = value['build'];
         this.serverInfo_.updateInfo(os,
             build && build['version'], build && build['revision']);
-      }, this);
+      }, this));
 };
 
 
@@ -218,18 +219,19 @@ remote.ui.Client.prototype.updateServerInfo_ = function() {
  * @private
  */
 remote.ui.Client.prototype.onRefresh_ = function() {
-  this.log_.info('Refreshing sessions...');
+  goog.log.info(this.log_, 'Refreshing sessions...');
+  var self = this;
   this.execute_(new webdriver.Command(webdriver.CommandName.GET_SESSIONS)).
-      addCallback(function(response) {
+      then(function(response) {
         var sessions = response['value'];
         sessions = goog.array.map(sessions, function(session) {
           return new webdriver.Session(session['id'], session['capabilities']);
         });
-        this.sessionContainer_.refreshSessions(sessions);
-      }, this).
-      addErrback(function(e) {
-        this.logError_('Unable to refresh session list.', e);
-      }, this);
+        self.sessionContainer_.refreshSessions(sessions);
+      }).
+      thenCatch(function(e) {
+        self.logError_('Unable to refresh session list.', e);
+      });
 };
 
 
@@ -240,19 +242,20 @@ remote.ui.Client.prototype.onRefresh_ = function() {
  * @private
  */
 remote.ui.Client.prototype.onCreate_ = function(e) {
-  this.log_.info('Creating new session for ' + e.data['browserName']);
+  goog.log.info(this.log_, 'Creating new session for ' + e.data['browserName']);
   var command = new webdriver.Command(webdriver.CommandName.NEW_SESSION).
       setParameter('desiredCapabilities', e.data);
+  var self = this;
   this.execute_(command).
-      addCallback(function(response) {
+      then(function(response) {
         var session = new webdriver.Session(response['sessionId'],
             response['value']);
-        this.sessionContainer_.addSession(session);
-      }, this).
-      addErrback(function(e) {
-        this.logError_('Unable to create new session.', e);
-        this.sessionContainer_.removePendingTab();
-      }, this);
+        self.sessionContainer_.addSession(session);
+      }).
+      thenCatch(function(e) {
+        self.logError_('Unable to create new session.', e);
+        self.sessionContainer_.removePendingTab();
+      });
 };
 
 
@@ -264,20 +267,22 @@ remote.ui.Client.prototype.onCreate_ = function(e) {
 remote.ui.Client.prototype.onDelete_ = function() {
   var session = this.sessionContainer_.getSelectedSession();
   if (!session) {
-    this.log_.warning('Cannot delete session; no session selected!');
+    goog.log.warning(this.log_, 'Cannot delete session; no session selected!');
     return;
   }
 
-  this.log_.info('Deleting session: ' + session.getId());
+  goog.log.info(this.log_, 'Deleting session: ' + session.getId());
   var command = new webdriver.Command(webdriver.CommandName.QUIT).
       setParameter('sessionId', session.getId());
+  var self = this;
   this.execute_(command).
-      addCallback(function() {
-        this.sessionContainer_.removeSession(session);
-      }, this).
-      addErrback(function(e) {
-        this.logError_('Unable to delete session.', e);
-      }, this);
+      then(function() {
+        self.sessionContainer_.removeSession(
+            /** @type {!webdriver.Session} */(session));
+      }).
+      thenCatch(function(e) {
+        self.logError_('Unable to delete session.', e);
+      });
 };
 
 
@@ -289,7 +294,8 @@ remote.ui.Client.prototype.onDelete_ = function() {
 remote.ui.Client.prototype.onLoad_ = function(e) {
   var session = this.sessionContainer_.getSelectedSession();
   if (!session) {
-    this.log_.warning('Cannot load url: ' + e.data + '; no session selected!');
+    goog.log.warning(this.log_,
+        'Cannot load url: ' + e.data + '; no session selected!');
     return;
   }
 
@@ -300,11 +306,11 @@ remote.ui.Client.prototype.onLoad_ = function(e) {
   var command = new webdriver.Command(webdriver.CommandName.GET).
       setParameter('sessionId', session.getId()).
       setParameter('url', url.toString());
-  this.log_.info('In session(' + session.getId() + '), loading ' + url);
-  this.execute_(command).
-      addErrback(function(e) {
-        this.logError_('Unable to load URL', e);
-      }, this);
+  goog.log.info(this.log_,
+      'In session(' + session.getId() + '), loading ' + url);
+  this.execute_(command).thenCatch(goog.bind(function(e) {
+    this.logError_('Unable to load URL', e);
+  }, this));
 };
 
 
@@ -315,23 +321,25 @@ remote.ui.Client.prototype.onLoad_ = function(e) {
 remote.ui.Client.prototype.onScreenshot_ = function() {
   var session = this.sessionContainer_.getSelectedSession();
   if (!session) {
-    this.log_.warning('Cannot take screenshot; no session selected!');
+    goog.log.warning(this.log_,
+        'Cannot take screenshot; no session selected!');
     return;
   }
 
-  this.log_.info('Taking screenshot: ' + session.getId());
+  goog.log.info(this.log_, 'Taking screenshot: ' + session.getId());
   var command = new webdriver.Command(webdriver.CommandName.SCREENSHOT).
       setParameter('sessionId', session.getId());
 
   this.screenshotDialog_.setState(remote.ui.ScreenshotDialog.State.LOADING);
   this.screenshotDialog_.setVisible(true);
 
+  var self = this;
   this.execute_(command).
-      addCallback(function(response) {
-        this.screenshotDialog_.displayScreenshot(response['value']);
-      }, this).
-      addErrback(function(e) {
-        this.screenshotDialog_.setVisible(false);
-        this.logError_('Unable to take screenshot.', e);
-      }, this);
+      then(function(response) {
+        self.screenshotDialog_.displayScreenshot(response['value']);
+      }).
+      thenCatch(function(e) {
+        self.screenshotDialog_.setVisible(false);
+        self.logError_('Unable to take screenshot.', e);
+      });
 };

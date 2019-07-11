@@ -36,9 +36,12 @@ goog.provide('goog.vec.Float64Array');
  *     The length of the array, or an array to initialize the contents of the
  *     new Float64Array.
  * @constructor
+ * @implements {IArrayLike<number>}
+ * @final
  */
 goog.vec.Float64Array = function(p0) {
-  this.length = p0.length || p0;
+  /** @type {number} */
+  this.length = /** @type {number} */ (p0.length || p0);
   for (var i = 0; i < this.length; i++) {
     this[i] = p0[i] || 0;
   }
@@ -65,7 +68,7 @@ goog.vec.Float64Array.prototype.BYTES_PER_ELEMENT = 8;
 
 /**
  * Sets elements of the array.
- * @param {Array.<number>|Float64Array} values The array of values.
+ * @param {Array<number>|Float64Array} values The array of values.
  * @param {number=} opt_offset The offset in this array to start.
  */
 goog.vec.Float64Array.prototype.set = function(values, opt_offset) {
@@ -99,19 +102,23 @@ goog.vec.Float64Array.prototype.toString = Array.prototype.join;
  */
 if (typeof Float64Array == 'undefined') {
   try {
-    goog.exportProperty(goog.vec.Float64Array, 'BYTES_PER_ELEMENT',
-                        goog.vec.Float64Array.BYTES_PER_ELEMENT);
+    goog.exportProperty(
+        goog.vec.Float64Array, 'BYTES_PER_ELEMENT',
+        goog.vec.Float64Array.BYTES_PER_ELEMENT);
   } catch (float64ArrayError) {
     // Do nothing.  This code is in place to fix b/7225850, in which an error
     // is incorrectly thrown for Google TV on an old Chrome.
     // TODO(user): remove after that version is retired.
   }
 
-  goog.exportProperty(goog.vec.Float64Array.prototype, 'BYTES_PER_ELEMENT',
-                      goog.vec.Float64Array.prototype.BYTES_PER_ELEMENT);
-  goog.exportProperty(goog.vec.Float64Array.prototype, 'set',
-                      goog.vec.Float64Array.prototype.set);
-  goog.exportProperty(goog.vec.Float64Array.prototype, 'toString',
-                      goog.vec.Float64Array.prototype.toString);
+  goog.exportProperty(
+      goog.vec.Float64Array.prototype, 'BYTES_PER_ELEMENT',
+      goog.vec.Float64Array.prototype.BYTES_PER_ELEMENT);
+  goog.exportProperty(
+      goog.vec.Float64Array.prototype, 'set',
+      goog.vec.Float64Array.prototype.set);
+  goog.exportProperty(
+      goog.vec.Float64Array.prototype, 'toString',
+      goog.vec.Float64Array.prototype.toString);
   goog.exportSymbol('Float64Array', goog.vec.Float64Array);
 }

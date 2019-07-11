@@ -19,19 +19,23 @@
  * runner by the time window.onload occurs, the testRunner will try to auto-
  * discover JsUnit style test pages.
  *
- * The hooks for selenium are :-
+ * The hooks for selenium are (see http://go/selenium-hook-setup):-
  *  - Boolean G_testRunner.isFinished()
  *  - Boolean G_testRunner.isSuccess()
  *  - String G_testRunner.getReport()
  *  - number G_testRunner.getRunTime()
+ *  - Object<string, Array<string>> G_testRunner.getTestResults()
  *
  * Testing code should not have dependencies outside of goog.testing so as to
  * reduce the chance of masking missing dependencies.
  *
  */
 
+goog.setTestOnly('goog.testing.TestRunner');
 goog.provide('goog.testing.TestRunner');
 
+goog.require('goog.dom');
+goog.require('goog.dom.TagName');
 goog.require('goog.testing.TestCase');
 
 
@@ -48,48 +52,40 @@ goog.require('goog.testing.TestCase');
 goog.testing.TestRunner = function() {
   /**
    * Errors that occurred in the window.
-   * @type {Array.<string>}
+   * @type {!Array<string>}
    */
   this.errors = [];
+
+  /**
+   * Reference to the active test case.
+   * @type {?goog.testing.TestCase}
+   */
+  this.testCase = null;
+
+  /**
+   * Whether the test runner has been initialized yet.
+   * @type {boolean}
+   */
+  this.initialized = false;
+
+  /**
+   * Element created in the document to add test results to.
+   * @private {?Element}
+   */
+  this.logEl_ = null;
+
+  /**
+   * Function to use when filtering errors.
+   * @private {(function(string))?}
+   */
+  this.errorFilter_ = null;
+
+  /**
+   * Whether an empty test case counts as an error.
+   * @private {boolean}
+   */
+  this.strict_ = true;
 };
-
-
-/**
- * Reference to the active test case.
- * @type {goog.testing.TestCase?}
- */
-goog.testing.TestRunner.prototype.testCase = null;
-
-
-/**
- * Whether the test runner has been initialized yet.
- * @type {boolean}
- */
-goog.testing.TestRunner.prototype.initialized = false;
-
-
-/**
- * Element created in the document to add test results to.
- * @type {Element}
- * @private
- */
-goog.testing.TestRunner.prototype.logEl_ = null;
-
-
-/**
- * Function to use when filtering errors.
- * @type {(function(string))?}
- * @private
- */
-goog.testing.TestRunner.prototype.errorFilter_ = null;
-
-
-/**
- * Whether an empty test case counts as an error.
- * @type {boolean}
- * @private
- */
-goog.testing.TestRunner.prototype.strict_ = true;
 
 
 /**
@@ -101,7 +97,6 @@ goog.testing.TestRunner.prototype.initialize = function(testCase) {
     throw Error('The test runner is already waiting for a test to complete');
   }
   this.testCase = testCase;
-  testCase.setTestRunner(this);
   this.initialized = true;
 };
 
@@ -190,8 +185,9 @@ goog.testing.TestRunner.prototype.logTestFailure = function(ex) {
     this.testCase.logError(testName, ex);
   } else {
     // NOTE: Do not forget to log the original exception raised.
-    throw new Error('Test runner not initialized with a test case. Original ' +
-                    'exception: ' + ex.message);
+    throw new Error(
+        'Test runner not initialized with a test case. Original ' +
+        'exception: ' + ex.message);
   }
 };
 
@@ -250,12 +246,40 @@ goog.testing.TestRunner.prototype.getNumFilesLoaded = function() {
  */
 goog.testing.TestRunner.prototype.execute = function() {
   if (!this.testCase) {
-    throw Error('The test runner must be initialized with a test case before ' +
-                'execute can be called.');
+    throw Error(
+        'The test runner must be initialized with a test case ' +
+        'before execute can be called.');
   }
+
+  if (this.strict_ && this.testCase.getCount() == 0) {
+    throw Error(
+        'No tests found in given test case: ' + this.testCase.getName() + '. ' +
+        'By default, the test runner fails if a test case has no tests. ' +
+        'To modify this behavior, see goog.testing.TestRunner\'s ' +
+        'setStrict() method, or G_testRunner.setStrict()');
+  }
+
   this.testCase.setCompletedCallback(goog.bind(this.onComplete_, this));
-  this.testCase.runTests();
+  if (goog.testing.TestRunner.shouldUsePromises_(this.testCase)) {
+    this.testCase.runTestsReturningPromise();
+  } else {
+    this.testCase.runTests();
+  }
 };
+
+
+/**
+ * @param {!goog.testing.TestCase} testCase
+ * @return {boolean}
+ * @private
+ */
+goog.testing.TestRunner.shouldUsePromises_ = function(testCase) {
+  return testCase.constructor === goog.testing.TestCase;
+};
+
+
+/** @const {string} The ID of the element to log output to. */
+goog.testing.TestRunner.TEST_LOG_ID = 'closureTestRunnerLog';
 
 
 /**
@@ -269,9 +293,10 @@ goog.testing.TestRunner.prototype.onComplete_ = function() {
   }
 
   if (!this.logEl_) {
-    var el = document.getElementById('closureTestRunnerLog');
+    var el = document.getElementById(goog.testing.TestRunner.TEST_LOG_ID);
     if (el == null) {
-      el = document.createElement('div');
+      el = goog.dom.createElement(goog.dom.TagName.DIV);
+      el.id = goog.testing.TestRunner.TEST_LOG_ID;
       document.body.appendChild(el);
     }
     this.logEl_ = el;
@@ -280,10 +305,11 @@ goog.testing.TestRunner.prototype.onComplete_ = function() {
   // Highlight the page to indicate the overall outcome.
   this.writeLog(log);
 
-  // TODO(user): Make this work with multiple test cases (b/8603638).
-  var runAgainLink = document.createElement('a');
-  runAgainLink.style.display = 'block';
+  // TODO(chrishenry): Make this work with multiple test cases (b/8603638).
+  var runAgainLink = goog.dom.createElement(goog.dom.TagName.A);
+  runAgainLink.style.display = 'inline-block';
   runAgainLink.style.fontSize = 'small';
+  runAgainLink.style.marginBottom = '16px';
   runAgainLink.href = '';
   runAgainLink.onclick = goog.bind(function() {
     this.execute();
@@ -303,15 +329,17 @@ goog.testing.TestRunner.prototype.writeLog = function(log) {
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
     var color;
-    var isFailOrError = /FAILED/.test(line) || /ERROR/.test(line);
-    if (/PASSED/.test(line)) {
+    var isPassed = /PASSED/.test(line);
+    var isFailOrError =
+        /FAILED/.test(line) || /ERROR/.test(line) || /NO TESTS RUN/.test(line);
+    if (isPassed) {
       color = 'darkgreen';
     } else if (isFailOrError) {
       color = 'darkred';
     } else {
       color = '#333';
     }
-    var div = document.createElement('div');
+    var div = goog.dom.createElement(goog.dom.TagName.DIV);
     if (line.substr(0, 2) == '> ') {
       // The stack trace may contain links so it has to be interpreted as HTML.
       div.innerHTML = line;
@@ -319,56 +347,58 @@ goog.testing.TestRunner.prototype.writeLog = function(log) {
       div.appendChild(document.createTextNode(line));
     }
 
-    if (isFailOrError) {
-      var testNameMatch = /(\S+) (\[[^\]]*] )?: (FAILED|ERROR)/.exec(line);
-      if (testNameMatch) {
-        // Build a URL to run the test individually.  If this test was already
-        // part of another subset test, we need to overwrite the old runTests
-        // query parameter.  We also need to do this without bringing in any
-        // extra dependencies, otherwise we could mask missing dependency bugs.
-        var newSearch = 'runTests=' + testNameMatch[1];
-        var search = window.location.search;
-        if (search) {
-          var oldTests = /runTests=([^&]*)/.exec(search);
-          if (oldTests) {
-            newSearch = search.substr(0, oldTests.index) +
-                        newSearch +
-                        search.substr(oldTests.index + oldTests[0].length);
-          } else {
-            newSearch = search + '&' + newSearch;
-          }
+    var testNameMatch = /(\S+) (\[[^\]]*] )?: (FAILED|ERROR|PASSED)/.exec(line);
+    if (testNameMatch) {
+      // Build a URL to run the test individually.  If this test was already
+      // part of another subset test, we need to overwrite the old runTests
+      // query parameter.  We also need to do this without bringing in any
+      // extra dependencies, otherwise we could mask missing dependency bugs.
+      var newSearch = 'runTests=' + testNameMatch[1];
+      var search = window.location.search;
+      if (search) {
+        var oldTests = /runTests=([^&]*)/.exec(search);
+        if (oldTests) {
+          newSearch = search.substr(0, oldTests.index) + newSearch +
+              search.substr(oldTests.index + oldTests[0].length);
         } else {
-          newSearch = '?' + newSearch;
+          newSearch = search + '&' + newSearch;
         }
-        var href = window.location.href;
-        var hash = window.location.hash;
-        if (hash && hash.charAt(0) != '#') {
-          hash = '#' + hash;
-        }
-        href = href.split('#')[0].split('?')[0] + newSearch + hash;
-
-        // Add the link.
-        var a = document.createElement('A');
-        a.innerHTML = '(run individually)';
-        a.style.fontSize = '0.8em';
-        a.href = href;
-        div.appendChild(document.createTextNode(' '));
-        div.appendChild(a);
+      } else {
+        newSearch = '?' + newSearch;
       }
+      var href = window.location.href;
+      var hash = window.location.hash;
+      if (hash && hash.charAt(0) != '#') {
+        hash = '#' + hash;
+      }
+      href = href.split('#')[0].split('?')[0] + newSearch + hash;
+
+      // Add the link.
+      var a = goog.dom.createElement(goog.dom.TagName.A);
+      a.innerHTML = '(run individually)';
+      a.style.fontSize = '0.8em';
+      a.style.color = '#888';
+      a.href = href;
+      div.appendChild(document.createTextNode(' '));
+      div.appendChild(a);
     }
 
     div.style.color = color;
     div.style.font = 'normal 100% monospace';
+    div.style.wordWrap = 'break-word';
     if (i == 0) {
       // Highlight the first line as a header that indicates the test outcome.
       div.style.padding = '20px';
       div.style.marginBottom = '10px';
-      if (isFailOrError) {
+      if (isPassed) {
+        div.style.border = '1px solid ' + color;
+        div.style.backgroundColor = '#eeffee';
+      } else if (isFailOrError) {
         div.style.border = '5px solid ' + color;
         div.style.backgroundColor = '#ffeeee';
       } else {
         div.style.border = '1px solid black';
-        div.style.backgroundColor = '#eeffee';
+        div.style.backgroundColor = '#eeeeee';
       }
     }
 
@@ -396,4 +426,32 @@ goog.testing.TestRunner.prototype.log = function(s) {
   if (this.testCase) {
     this.testCase.log(s);
   }
+};
+
+
+// TODO(nnaze): Properly handle serving test results when multiple test cases
+// are run.
+/**
+ * @return {Object<string, !Array<!goog.testing.TestCase.IResult>>} A map of
+ * test names to a list of test failures (if any) to provide formatted data
+ * for the test runner.
+ */
+goog.testing.TestRunner.prototype.getTestResults = function() {
+  if (this.testCase) {
+    return this.testCase.getTestResults();
+  }
+  return null;
+};
+
+
+/**
+ * Returns the test results as json.
+ * This is called by the testing infrastructure through G_testrunner.
+ * @return {?string} Tests results object.
+ */
+goog.testing.TestRunner.prototype.getTestResultsAsJson = function() {
+  if (this.testCase) {
+    return this.testCase.getTestResultsAsJson();
+  }
+  return null;
 };

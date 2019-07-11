@@ -16,13 +16,13 @@
 /**
  * @fileoverview Represents a path used with a Graphics implementation.
  * @author arv@google.com (Erik Arvidsson)
- * @author glenning@google.com (Anthony Glenning)
  */
 
 goog.provide('goog.graphics.Path');
 goog.provide('goog.graphics.Path.Segment');
 
 goog.require('goog.array');
+goog.require('goog.graphics.AffineTransform');
 goog.require('goog.math');
 
 
@@ -36,28 +36,25 @@ goog.require('goog.math');
  * the {@code transform} method.
  *
  * @constructor
- * @deprecated goog.graphics is deprecated. It existed to abstract over browser
- *     differences before the canvas tag was widely supported.  See
- *     http://en.wikipedia.org/wiki/Canvas_element for details.
  */
 goog.graphics.Path = function() {
   /**
    * The segment types that constitute this path.
-   * @type {!Array.<number>}
+   * @type {!Array<number>}
    * @private
    */
   this.segments_ = [];
 
   /**
    * The number of repeated segments of the current type.
-   * @type {!Array.<number>}
+   * @type {!Array<number>}
    * @private
    */
   this.count_ = [];
 
   /**
    * The arguments corresponding to each of the segments.
-   * @type {!Array.<number>}
+   * @type {!Array<number>}
    * @private
    */
   this.arguments_ = [];
@@ -67,7 +64,7 @@ goog.graphics.Path = function() {
 /**
  * The coordinates of the point which closes the path (the point of the
  * last moveTo command).
- * @type {Array.<number>?}
+ * @type {Array<number>?}
  * @private
  */
 goog.graphics.Path.prototype.closePoint_ = null;
@@ -75,7 +72,7 @@ goog.graphics.Path.prototype.closePoint_ = null;
 
 /**
  * The coordinates most recently added to the end of the path.
- * @type {Array.<number>?}
+ * @type {Array<number>?}
  * @private
  */
 goog.graphics.Path.prototype.currentPoint_ = null;
@@ -104,9 +101,8 @@ goog.graphics.Path.Segment = {
 
 /**
  * The number of points for each segment type.
- * @type {!Array.<number>}
+ * @type {!Array<number>}
  * @private
- * @suppress {deprecated} goog.graphics.Path is deprecated.
  */
 goog.graphics.Path.segmentArgCounts_ = (function() {
   var counts = [];
@@ -218,7 +214,7 @@ goog.graphics.Path.prototype.lineTo = function(var_args) {
  * specified using 3 points (6 coordinates) - two control points and the end
  * point of the curve.
  *
- * @param {...number} var_args The coordinates specifiying each curve in sets of
+ * @param {...number} var_args The coordinates specifying each curve in sets of
  *     6 points: {@code [x1, y1]} the first control point, {@code [x2, y2]} the
  *     second control point and {@code [x, y]} the end point.
  * @return {!goog.graphics.Path} The path itself.
@@ -235,8 +231,9 @@ goog.graphics.Path.prototype.curveTo = function(var_args) {
   for (var i = 0; i < arguments.length; i += 6) {
     var x = arguments[i + 4];
     var y = arguments[i + 5];
-    this.arguments_.push(arguments[i], arguments[i + 1],
-        arguments[i + 2], arguments[i + 3], x, y);
+    this.arguments_.push(
+        arguments[i], arguments[i + 1], arguments[i + 2], arguments[i + 3], x,
+        y);
   }
   this.count_[this.count_.length - 1] += i / 6;
   this.currentPoint_ = [x, y];
@@ -282,8 +279,8 @@ goog.graphics.Path.prototype.close = function() {
  * @return {!goog.graphics.Path} The path itself.
  * @deprecated Use {@code arcTo} or {@code arcToAsCurves} instead.
  */
-goog.graphics.Path.prototype.arc = function(cx, cy, rx, ry,
-    fromAngle, extent, connect) {
+goog.graphics.Path.prototype.arc = function(
+    cx, cy, rx, ry, fromAngle, extent, connect) {
   var startX = cx + goog.math.angleDx(fromAngle, rx);
   var startY = cy + goog.math.angleDy(fromAngle, ry);
   if (connect) {
@@ -356,11 +353,9 @@ goog.graphics.Path.prototype.arcToAsCurves = function(
     angle += inc;
     relX = Math.cos(angle);
     relY = Math.sin(angle);
-    this.curveTo(c0, c1,
-        cx + (relX + z * relY) * rx,
-        cy + (relY - z * relX) * ry,
-        cx + relX * rx,
-        cy + relY * ry);
+    this.curveTo(
+        c0, c1, cx + (relX + z * relY) * rx, cy + (relY - z * relX) * ry,
+        cx + relX * rx, cy + relY * ry);
   }
   return this;
 };
@@ -396,7 +391,7 @@ goog.graphics.Path.prototype.forEachSegment = function(callback) {
 /**
  * Returns the coordinates most recently added to the end of the path.
  *
- * @return {Array.<number>?} An array containing the ending coordinates of the
+ * @return {Array<number>?} An array containing the ending coordinates of the
  *     path of the form {@code [x, y]}.
  */
 goog.graphics.Path.prototype.getCurrentPoint = function() {
@@ -496,8 +491,8 @@ goog.graphics.Path.prototype.transform = function(tx) {
   if (!this.isSimple()) {
     throw Error('Non-simple path');
   }
-  tx.transform(this.arguments_, 0, this.arguments_, 0,
-      this.arguments_.length / 2);
+  tx.transform(
+      this.arguments_, 0, this.arguments_, 0, this.arguments_.length / 2);
   if (this.closePoint_) {
     tx.transform(this.closePoint_, 0, this.closePoint_, 0, 1);
   }

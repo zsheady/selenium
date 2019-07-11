@@ -1,64 +1,65 @@
-# Copyright 2008-2009 WebDriver committers
-# Copyright 2008-2009 Google Inc.
+# Licensed to the Software Freedom Conservancy (SFC) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The SFC licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-# Licensed under the Apache License, Version 2.0 (the "License")
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
-#     http:#www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
-import unittest
 import pytest
 
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.color import Color
 
 
-class RenderedWebElementTests(unittest.TestCase):
+def testShouldPickUpStyleOfAnElement(driver, pages):
+    pages.load("javascriptPage.html")
 
-    @pytest.mark.ignore_chrome
-    def testShouldPickUpStyleOfAnElement(self):
-        self._loadPage("javascriptPage")
+    element = driver.find_element(by=By.ID, value="green-parent")
+    backgroundColour = Color.from_string(element.value_of_css_property("background-color"))
+    assert Color.from_string("rgba(0, 128, 0, 1)") == backgroundColour
 
-        element = self.driver.find_element(by=By.ID, value="green-parent")
-        backgroundColour = element.value_of_css_property("background-color")
+    element = driver.find_element(by=By.ID, value="red-item")
+    backgroundColour = Color.from_string(element.value_of_css_property("background-color"))
+    assert Color.from_string("rgba(255, 0, 0, 1)") == backgroundColour
 
-        self.assertEqual("rgba(0, 128, 0, 1)", backgroundColour)
 
-        element = self.driver.find_element(by=By.ID, value="red-item")
-        backgroundColour = element.value_of_css_property("background-color")
+def testShouldAllowInheritedStylesToBeUsed(driver, pages):
+    pages.load("javascriptPage.html")
+    element = driver.find_element(by=By.ID, value="green-item")
+    backgroundColour = Color.from_string(element.value_of_css_property("background-color"))
+    assert backgroundColour == Color.from_string("transparent")
 
-        self.assertEqual("rgba(255, 0, 0, 1)", backgroundColour)
 
-    @pytest.mark.ignore_chrome
-    def testShouldAllowInheritedStylesToBeUsed(self):
-        self._loadPage("javascriptPage")
+def testShouldCorrectlyIdentifyThatAnElementHasWidth(driver, pages):
+    pages.load("xhtmlTest.html")
 
-        element = self.driver.find_element(by=By.ID, value="green-item")
-        backgroundColour = element.value_of_css_property("background-color")
+    shrinko = driver.find_element(by=By.ID, value="linkId")
+    size = shrinko.size
+    assert size["width"] > 0
+    assert size["height"] > 0
 
-        self.assertEqual("transparent", backgroundColour)
-  
 
-    def testShouldCorrectlyIdentifyThatAnElementHasWidth(self):
-        self._loadPage("xhtmlTest")
+@pytest.mark.xfail_safari(
+    reason='Get Element Rect command not implemented',
+    raises=WebDriverException)
+def testShouldBeAbleToDetermineTheRectOfAnElement(driver, pages):
+    pages.load("xhtmlTest.html")
 
-        shrinko =  self.driver.find_element(by=By.ID, value="linkId")
-        size = shrinko.size
-        self.assertTrue(size["width"] > 0, "Width expected to be greater than 0")
-        self.assertTrue(size["height"] > 0, "Height expected to be greater than 0")
-  
-    def _pageURL(self, name):
-        return "http://localhost:%d/%s.html" % (self.webserver.port, name)
+    element = driver.find_element(By.ID, "username")
+    rect = element.rect
 
-    def _loadSimplePage(self):
-        self._loadPage("simpleTest")
-
-    def _loadPage(self, name):
-        self.driver.get(self._pageURL(name))
-
+    assert rect["x"] > 0
+    assert rect["y"] > 0
+    assert rect["width"] > 0
+    assert rect["height"] > 0

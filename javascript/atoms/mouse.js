@@ -1,17 +1,19 @@
-// Copyright 2011 WebDriver committers
-// Copyright 2011 Google Inc.
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 /**
  * @fileoverview The file contains an abstraction of a mouse for
@@ -46,7 +48,7 @@ goog.require('goog.userAgent');
  * @constructor
  * @extends {bot.Device}
  */
-bot.Mouse = function(opt_state, opt_modifiersState, opt_eventEmitter) {
+bot.Mouse = function (opt_state, opt_modifiersState, opt_eventEmitter) {
   goog.base(this, opt_modifiersState, opt_eventEmitter);
 
   /** @private {?bot.Mouse.Button} */
@@ -68,23 +70,28 @@ bot.Mouse = function(opt_state, opt_modifiersState, opt_eventEmitter) {
   this.hasEverInteracted_ = false;
 
   if (opt_state) {
-    this.buttonPressed_ = opt_state.buttonPressed;
+    if (goog.isNumber(opt_state['buttonPressed'])) {
+      this.buttonPressed_ = opt_state['buttonPressed'];
+    }
 
     try {
-      if (bot.dom.isElement(opt_state.elementPressed)) {
-        this.elementPressed_ = opt_state.elementPressed;
+      if (bot.dom.isElement(opt_state['elementPressed'])) {
+        this.elementPressed_ = opt_state['elementPressed'];
       }
     } catch (ignored) {
       this.buttonPressed_ = null;
     }
 
-    this.clientXY_ = opt_state.clientXY;
-    this.nextClickIsDoubleClick_ = opt_state.nextClickIsDoubleClick;
-    this.hasEverInteracted_ = opt_state.hasEverInteracted;
+    this.clientXY_ = new goog.math.Coordinate(
+      opt_state['clientXY']['x'],
+      opt_state['clientXY']['y']);
+
+    this.nextClickIsDoubleClick_ = !!opt_state['nextClickIsDoubleClick'];
+    this.hasEverInteracted_ = !!opt_state['hasEverInteracted'];
 
     try {
-      if (bot.dom.isElement(opt_state.element)) {
-        this.setElement(/** @type {!Element} */ (opt_state.element));
+      if (opt_state['element'] && bot.dom.isElement(opt_state['element'])) {
+        this.setElement(/** @type {!Element} */(opt_state['element']));
       }
     } catch (ignored) {
       this.buttonPressed_ = null;
@@ -95,9 +102,12 @@ goog.inherits(bot.Mouse, bot.Device);
 
 
 /**
+  * Describes the state of the mouse. This type should be treated as a
+  * dictionary with all properties accessed using array notation to
+  * ensure properties are not renamed by the compiler.
   * @typedef {{buttonPressed: ?bot.Mouse.Button,
   *           elementPressed: Element,
-  *           clientXY: !goog.math.Coordinate,
+  *           clientXY: {x: number, y: number},
   *           nextClickIsDoubleClick: boolean,
   *           hasEverInteracted: boolean,
   *           element: Element}}
@@ -134,7 +144,7 @@ bot.Mouse.NO_BUTTON_VALUE_INDEX_ = 3;
  *               dblclick  mousedown  mouseover
  * IE_DOC_PRE9   0 0 0 X   1 4 2 X    0 0 0 0    1 4 2 0    X X 0 X
  * WEBKIT/IE9    0 1 2 X   0 1 2 X    0 1 2 0    0 1 2 0    X X 2 X
- * GECKO/OPERA   0 1 2 X   0 1 2 X    0 0 0 0    0 0 0 0    X X 2 X
+ * GECKO         0 1 2 X   0 1 2 X    0 0 0 0    0 0 0 0    X X 2 X
  * </pre>
  * @private {!Object.<bot.events.EventType, !Array.<?number>>}
  * @const
@@ -204,10 +214,11 @@ bot.Mouse.MOUSE_EVENT_MAP_ = (function() {
  * Attempts to fire a mousedown event and then returns whether or not the
  * element should receive focus as a result of the mousedown.
  *
+ * @param {?number=} opt_count Number of clicks that have been performed.
  * @return {boolean} Whether to focus on the element after the mousedown.
  * @private
  */
-bot.Mouse.prototype.fireMousedown_ = function() {
+bot.Mouse.prototype.fireMousedown_ = function(opt_count) {
   // On some browsers, a mouse down event on an OPTION or SELECT element cause
   // the SELECT to open, blocking further JS execution. This is undesirable,
   // and so needs to be detected. We always focus in this case.
@@ -228,7 +239,7 @@ bot.Mouse.prototype.fireMousedown_ = function() {
   if (mousedownCanPreemptFocus) {
     beforeActiveElement = bot.dom.getActiveElement(this.getElement());
   }
-  var performFocus = this.fireMouseEvent_(bot.events.EventType.MOUSEDOWN);
+  var performFocus = this.fireMouseEvent_(bot.events.EventType.MOUSEDOWN, null, null, false, opt_count);
   if (performFocus && mousedownCanPreemptFocus &&
       beforeActiveElement != bot.dom.getActiveElement(this.getElement())) {
     return false;
@@ -241,16 +252,17 @@ bot.Mouse.prototype.fireMousedown_ = function() {
  * Press a mouse button on an element that the mouse is interacting with.
  *
  * @param {!bot.Mouse.Button} button Button.
+ * @param {?number=} opt_count Number of clicks that have been performed.
 */
-bot.Mouse.prototype.pressButton = function(button) {
+bot.Mouse.prototype.pressButton = function(button, opt_count) {
   if (!goog.isNull(this.buttonPressed_)) {
     throw new bot.Error(bot.ErrorCode.UNKNOWN_ERROR,
-        'Cannot press more then one button or an already pressed button.');
+        'Cannot press more than one button or an already pressed button.');
   }
   this.buttonPressed_ = button;
   this.elementPressed_ = this.getElement();
 
-  var performFocus = this.fireMousedown_();
+  var performFocus = this.fireMousedown_(opt_count);
   if (performFocus) {
     if (bot.userAgent.IE_DOC_10 &&
         this.buttonPressed_ == bot.Mouse.Button.LEFT &&
@@ -267,35 +279,48 @@ bot.Mouse.prototype.pressButton = function(button) {
 /**
  * Releases the pressed mouse button. Throws exception if no button pressed.
  *
+ * @param {boolean=} opt_force Whether the event should be fired even if the
+ *     element is not interactable.
+ * @param {?number=} opt_count Number of clicks that have been performed.
  */
-bot.Mouse.prototype.releaseButton = function() {
+bot.Mouse.prototype.releaseButton = function(opt_force, opt_count) {
   if (goog.isNull(this.buttonPressed_)) {
     throw new bot.Error(bot.ErrorCode.UNKNOWN_ERROR,
         'Cannot release a button when no button is pressed.');
   }
 
   this.maybeToggleOption();
-  this.fireMouseEvent_(bot.events.EventType.MOUSEUP);
 
-  // TODO: Middle button can also trigger click.
-  if (this.buttonPressed_ == bot.Mouse.Button.LEFT &&
-      this.getElement() == this.elementPressed_) {
-    if (!(bot.userAgent.WINDOWS_PHONE &&
-        bot.dom.isElement(this.elementPressed_, goog.dom.TagName.OPTION))) {
-      this.clickElement(this.clientXY_,
-          this.getButtonValue_(bot.events.EventType.CLICK));
+  // If a mouseup event is dispatched to an interactable event, and that mouseup
+  // would complete a click, then the click event must be dispatched even if the
+  // element becomes non-interactable after the mouseup.
+  var elementInteractableBeforeMouseup =
+      bot.dom.isInteractable(this.getElement());
+  this.fireMouseEvent_(bot.events.EventType.MOUSEUP, null, null, opt_force, opt_count);
+
+  try { // https://github.com/SeleniumHQ/selenium/issues/1509
+    // TODO: Middle button can also trigger click.
+    if (this.buttonPressed_ == bot.Mouse.Button.LEFT &&
+        this.getElement() == this.elementPressed_) {
+      if (!(bot.userAgent.WINDOWS_PHONE &&
+            bot.dom.isElement(this.elementPressed_, goog.dom.TagName.OPTION))) {
+        this.clickElement(this.clientXY_,
+                          this.getButtonValue_(bot.events.EventType.CLICK),
+                          /* opt_force */ elementInteractableBeforeMouseup);
+      }
+      this.maybeDoubleClickElement_();
+      if (bot.userAgent.IE_DOC_10 &&
+          this.buttonPressed_ == bot.Mouse.Button.LEFT &&
+          bot.dom.isElement(this.elementPressed_, goog.dom.TagName.OPTION)) {
+        this.fireMSPointerEvent(bot.events.EventType.MSLOSTPOINTERCAPTURE,
+                                new goog.math.Coordinate(0, 0), 0, bot.Device.MOUSE_MS_POINTER_ID,
+                                MSPointerEvent.MSPOINTER_TYPE_MOUSE, false);
+      }
+      // TODO: In Linux, this fires after mousedown event.
+    } else if (this.buttonPressed_ == bot.Mouse.Button.RIGHT) {
+      this.fireMouseEvent_(bot.events.EventType.CONTEXTMENU);
     }
-    this.maybeDoubleClickElement_();
-    if (bot.userAgent.IE_DOC_10 &&
-        this.buttonPressed_ == bot.Mouse.Button.LEFT &&
-        bot.dom.isElement(this.elementPressed_, goog.dom.TagName.OPTION)) {
-      this.fireMSPointerEvent(bot.events.EventType.MSLOSTPOINTERCAPTURE,
-          new goog.math.Coordinate(0, 0), 0, bot.Device.MOUSE_MS_POINTER_ID,
-          MSPointerEvent.MSPOINTER_TYPE_MOUSE, false);
-    }
-  // TODO: In Linux, this fires after mousedown event.
-  } else if (this.buttonPressed_ == bot.Mouse.Button.RIGHT) {
-    this.fireMouseEvent_(bot.events.EventType.CONTEXTMENU);
+  } catch (ignored) {
   }
   bot.Device.clearPointerMap();
   this.buttonPressed_ = null;
@@ -420,11 +445,12 @@ bot.Mouse.prototype.scroll = function(ticks) {
  * @param {?number=} opt_wheelDelta The wheel delta value for the event.
  * @param {boolean=} opt_force Whether the event should be fired even if the
  *     element is not interactable.
+ * @param {?number=} opt_count Number of clicks that have been performed.
  * @return {boolean} Whether the event fired successfully or was cancelled.
  * @private
  */
 bot.Mouse.prototype.fireMouseEvent_ = function(type, opt_related,
-                                               opt_wheelDelta, opt_force) {
+                                               opt_wheelDelta, opt_force, opt_count) {
   this.hasEverInteracted_ = true;
   if (bot.userAgent.IE_DOC_10) {
     var msPointerEvent = bot.Mouse.MOUSE_EVENT_MAP_[type];
@@ -440,7 +466,7 @@ bot.Mouse.prototype.fireMouseEvent_ = function(type, opt_related,
     }
   }
   return this.fireMouseEvent(type, this.clientXY_,
-      this.getButtonValue_(type), opt_related, opt_wheelDelta, opt_force);
+      this.getButtonValue_(type), opt_related, opt_wheelDelta, opt_force, null, opt_count);
 };
 
 
@@ -474,12 +500,17 @@ bot.Mouse.prototype.getButtonValue_ = function(eventType) {
  * @return {!bot.Mouse.State} The current mouse state.
  */
 bot.Mouse.prototype.getState = function() {
-  var state = {};
-  state.buttonPressed = this.buttonPressed_;
-  state.elementPressed = this.elementPressed_;
-  state.clientXY = this.clientXY_;
-  state.nextClickIsDoubleClick = this.nextClickIsDoubleClick_;
-  state.hasEverInteracted = this.hasEverInteracted_;
-  state.element = this.getElement();
-  return state;
+  // Need to use quoted literals here, so the compiler will not rename the
+  // properties of the emitted object. When the object is created via the
+  // "constructor", we will look for these *specific* properties. Everywhere
+  // else internally, we use the dot-notation, so it's okay if the compiler
+  // renames the internal variable name.
+  return {
+    'buttonPressed': this.buttonPressed_,
+    'elementPressed': this.elementPressed_,
+    'clientXY': { 'x': this.clientXY_.x, 'y': this.clientXY_.y },
+    'nextClickIsDoubleClick': this.nextClickIsDoubleClick_,
+    'hasEverInteracted': this.hasEverInteracted_,
+    'element': this.getElement()
+  };
 };

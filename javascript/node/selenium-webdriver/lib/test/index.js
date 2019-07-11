@@ -1,254 +1,80 @@
-// Copyright 2013 Selenium committers
-// Copyright 2013 Software Freedom Conservancy
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-//     You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 'use strict';
 
-var assert = require('assert');
+const assert = require('assert');
 
-var webdriver = require('../..'),
-    flow = webdriver.promise.controlFlow(),
-    testing = require('../../testing'),
-    fileserver = require('./fileserver'),
-    seleniumserver = require('./seleniumserver');
+const build = require('./build');
+const fileserver = require('./fileserver');
+const firefox = require('../../firefox');
+const logging = require('../../lib/logging');
+const remote = require('../../remote');
+const safari = require('../../safari');
+const testing = require('../../testing');
+const webdriver = require('../../');
 
-
-var Browser = {
-  ANDROID: 'android',
-  CHROME: 'chrome',
-  IE: 'internet explorer',
-  // Shorthand for IPAD && IPHONE when using the browsers predciate.
-  IOS: 'iOS',
-  IPAD: 'iPad',
-  IPHONE: 'iPhone',
-  FIREFOX: 'firefox',
-  OPERA: 'opera',
-  PHANTOMJS: 'phantomjs',
-  SAFARI: 'safari',
-
-  // Browsers that should always be tested via the java Selenium server.
-  REMOTE_CHROME: 'remote.chrome',
-  REMOTE_PHANTOMJS: 'remote.phantomjs'
-};
+const NO_BUILD = /^1|true$/i.test(process.env['SELENIUM_NO_BUILD']);
 
 
 /**
- * Browsers with native support.
- * @type {!Array.<string>}
+ * @param {function(!testing.Environment)} fn The top level suite function.
+ * @param {testing.SuiteOptions=} options Suite specific options.
  */
-var NATIVE_BROWSERS = [
-  Browser.CHROME,
-  Browser.PHANTOMJS
-];
-
-
-var browsersToTest = (function() {
-  var browsers = process.env['SELENIUM_BROWSER'] || Browser.CHROME;
-  browsers = browsers.split(',');
-  browsers.forEach(function(browser) {
-    if (browser === Browser.IOS) {
-      throw Error('Invalid browser name: ' + browser);
-    }
-
-    for (var name in Browser) {
-      if (Browser.hasOwnProperty(name) && Browser[name] === browser) {
-        return;
-      }
-    }
-
-    throw Error('Unrecognized browser: ' + browser);
-  });
-  return browsers;
-})();
-
-
-/**
- * Creates a predicate function that ignores tests for specific browsers.
- * @param {string} currentBrowser The name of the current browser.
- * @param {!Array.<!Browser>} browsersToIgnore The browsers to ignore.
- * @return {function(): boolean} The predicate function.
- */
-function browsers(currentBrowser, browsersToIgnore) {
-  return function() {
-    var checkIos =
-        currentBrowser === Browser.IPAD || currentBrowser === Browser.IPHONE;
-    return browsersToIgnore.indexOf(currentBrowser) != -1 ||
-        (checkIos && browsersToIgnore.indexOf(Browser.IOS) != -1);
-  };
-}
-
-
-/**
- * @param {string} browserName The name to use.
- * @param {remote.DriverService} server The server to use, if any.
- * @constructor
- */
-function TestEnvironment(browserName, server) {
-  var name = browserName;
-  if (name.lastIndexOf('remote.', 0) == 0) {
-    name = name.substring('remote.'.length);
-  }
-
-  var autoCreate = true;
-  this.__defineGetter__(
-      'autoCreateDriver', function() { return autoCreate; });
-  this.__defineSetter__(
-      'autoCreateDriver', function(auto) { autoCreate = auto; });
-
-  this.__defineGetter__('browser', function() { return name; });
-
-  var driver;
-  this.__defineGetter__('driver', function() { return driver; });
-
-  this.browsers = function(var_args) {
-    var browsersToIgnore = Array.prototype.slice.apply(arguments, [0]);
-    var remoteVariants = [];
-    browsersToIgnore.forEach(function(browser) {
-      if (browser.lastIndexOf('remote.', 0) === 0) {
-        remoteVariants.push(browser.substring('remote.'.length));
+function suite(fn, options = undefined) {
+  testing.suite(function(env) {
+    before(function() {
+      if (false && !NO_BUILD) {
+        return build.of(
+            '//javascript/atoms/fragments:is-displayed',
+            '//javascript/webdriver/atoms:get-attribute')
+            .onlyOnce().go();
       }
     });
-    browsersToIgnore = browsersToIgnore.concat(remoteVariants);
-    return browsers(browserName, browsersToIgnore);
-  };
 
-  this.builder = function() {
-    assert.ok(!driver, 'Can only have one driver at a time');
-    var builder = new webdriver.Builder();
-    var realBuild = builder.build;
-
-    builder.build = function() {
-      builder.getCapabilities().
-          set(webdriver.Capability.BROWSER_NAME, name);
-
-      if (server) {
-        builder.usingServer(server.address());
-      }
-      return driver = realBuild.call(builder);
-    };
-
-    return builder;
-  };
-
-  this.createDriver = function() {
-    if (!driver) {
-      driver = this.builder().build();
-    }
-    return driver;
-  };
-
-  this.refreshDriver = function() {
-    if (driver) {
-      driver.quit();
-      driver = null;
-    }
-    this.createDriver();
-  };
-
-  this.dispose = function() {
-    if (driver) {
-      driver.quit();
-      driver = null;
-    }
-  };
-
-  this.waitForTitleToBe = function(expected) {
-    driver.wait(function() {
-      return driver.getTitle().then(function(title) {
-        return title === expected;
-      });
-    }, 5000, 'Waiting for title to be ' + expected);
-  };
-}
-
-
-var seleniumServer;
-var inSuite = false;
-
-
-/**
- * Expands a function to cover each of the target browsers.
- * @param {function(!TestEnvironment)} fn The top level suite
- *     function.
- * @param {{browsers: !Array.<string>}=} opt_options Suite specific options.
- */
-function suite(fn, opt_options) {
-  assert.ok(!inSuite, 'You may not nest suite calls');
-  inSuite = true;
-
-  var suiteOptions = opt_options || {};
-  var browsers = suiteOptions.browsers;
-  if (browsers) {
-    // Filter out browser specific tests when that browser is not currently
-    // selected for testing.
-    browsers = browsers.filter(function(browser) {
-      if (browsersToTest.indexOf(browser) != -1) {
-        return true;
-      }
-      return browsersToTest.indexOf(
-          browser.substring('remote.'.length)) != -1;
-    });
-  } else {
-    browsers = browsersToTest;
-  }
-
-  try {
-    browsers.forEach(function(browser) {
-
-      testing.describe('[' + browser + ']', function() {
-        var serverToUse = null;
-
-        if (NATIVE_BROWSERS.indexOf(browser) == -1) {
-          serverToUse = seleniumServer;
-          if (!serverToUse) {
-            serverToUse = seleniumServer = new seleniumserver.Server();
-          }
-          testing.before(seleniumServer.start.bind(seleniumServer, 60 * 1000));
-        }
-
-        var env = new TestEnvironment(browser, serverToUse);
-
-        testing.beforeEach(function() {
-          if (env.autoCreateDriver) {
-            env.createDriver();
-          }
-        });
-
-        testing.after(function() {
-          env.dispose();
-        });
-
-        fn(env);
-      });
-    });
-  } finally {
-    inSuite = false;
-  }
+    fn(env);
+  }, options);
 }
 
 
 // GLOBAL TEST SETUP
 
 
-testing.before(fileserver.start);
-testing.after(fileserver.stop);
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled promise rejection:', reason);
+});
 
-// Server is only started if required for a specific config.
-testing.after(function() {
-  if (seleniumServer) {
-    seleniumServer.stop();
-  }
+
+if (/^1|true$/i.test(process.env['SELENIUM_VERBOSE'])) {
+  logging.installConsoleHandler();
+  logging.getLogger('webdriver.http').setLevel(logging.Level.ALL);
+}
+
+testing.init();
+
+before(function() {
+   // Do not pass register fileserver.start directly with testing.before,
+   // as start takes an optional port, which before assumes is an async
+   // callback.
+   return fileserver.start();
+});
+
+after(function() {
+   return fileserver.stop();
 });
 
 
@@ -256,13 +82,6 @@ testing.after(function() {
 
 
 exports.suite = suite;
-exports.after = testing.after;
-exports.afterEach = testing.afterEach;
-exports.before = testing.before;
-exports.beforeEach = testing.beforeEach;
-exports.it = testing.it;
 exports.ignore = testing.ignore;
-
-exports.Browser = Browser;
 exports.Pages = fileserver.Pages;
 exports.whereIs = fileserver.whereIs;

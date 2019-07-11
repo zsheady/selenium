@@ -1,17 +1,19 @@
-// Copyright 2012 WebDriver committers
-// Copyright 2012 Google Inc.
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 /**
  * @fileoverview Provides JSON utilities that uses native JSON parsing where
@@ -27,7 +29,7 @@ goog.require('goog.userAgent');
 
 /**
  * @define {boolean} NATIVE_JSON indicates whether the code should rely on the
- * native {@code JSON} functions, if available.
+ * native `JSON` functions, if available.
  *
  * <p>The JSON functions can be defined by external libraries like Prototype
  * and setting this flag to false forces the use of Closure's goog.json
@@ -47,10 +49,10 @@ bot.json.NATIVE_JSON = true;
  * @private {boolean}
  */
 bot.json.SUPPORTS_NATIVE_JSON_ =
-    // List WebKit and Opera first since every supported version of these
-    // browsers supports native JSON (and we can compile away large chunks of
-    // code for individual fragments by setting the appropriate compiler flags).
-    goog.userAgent.WEBKIT || goog.userAgent.OPERA ||
+    // List WebKit first since every supported version supports
+    // native JSON (and we can compile away large chunks of code for
+    // individual fragments by setting the appropriate compiler flags).
+    goog.userAgent.WEBKIT ||
         (goog.userAgent.GECKO && bot.userAgent.isEngineVersion(3.5)) ||
         (goog.userAgent.IE && bot.userAgent.isEngineVersion(8));
 
@@ -74,5 +76,4 @@ bot.json.stringify = bot.json.NATIVE_JSON && bot.json.SUPPORTS_NATIVE_JSON_ ?
  * @return {*} The JSON object.
  * @throws {Error} If the input string is an invalid JSON string.
  */
-bot.json.parse = bot.json.NATIVE_JSON && bot.json.SUPPORTS_NATIVE_JSON_ ?
-    JSON.parse : goog.json.parse;
+bot.json.parse = JSON.parse;

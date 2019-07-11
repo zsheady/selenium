@@ -1,9 +1,9 @@
-﻿// <copyright file="ICapabilities.cs" company="WebDriver Committers">
-// Copyright 2007-2011 WebDriver committers
-// Copyright 2007-2011 Google Inc.
-// Portions copyright 2011 Software Freedom Conservancy
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
+// <copyright file="ICapabilities.cs" company="WebDriver Committers">
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -16,6 +16,7 @@
 // limitations under the License.
 // </copyright>
 
+using System;
 using System.Collections.Generic;
 
 namespace OpenQA.Selenium
@@ -26,24 +27,14 @@ namespace OpenQA.Selenium
     public interface ICapabilities
     {
         /// <summary>
-        /// Gets the browser name
+        /// Gets the capability value with the specified name.
         /// </summary>
-        string BrowserName { get; }
-
-        /// <summary>
-        /// Gets the platform
-        /// </summary>
-        Platform Platform { get; }
-
-        /// <summary>
-        /// Gets the browser version
-        /// </summary>
-        string Version { get; }
-
-        /// <summary>
-        /// Gets a value indicating whether the browser is JavaScript enabled
-        /// </summary>
-        bool IsJavaScriptEnabled { get; }
+        /// <param name="capabilityName">The name of the capability to get.</param>
+        /// <returns>The value of the capability.</returns>
+        /// <exception cref="ArgumentException">
+        /// The specified capability name is not in the set of capabilities.
+        /// </exception>
+        object this[string capabilityName] { get; }
 
         /// <summary>
         /// Gets a value indicating whether the browser has a given capability.

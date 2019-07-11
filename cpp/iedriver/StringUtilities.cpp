@@ -1,5 +1,8 @@
-// Copyright 2013 Software Freedom Conservancy
-// Licensed under the Apache License, Version 2.0 (the "License");
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
@@ -63,6 +66,7 @@ std::wstring StringUtilities::ToWString(const std::string& input) {
   } else {
     output = &output_buffer[0];
   }
+
   return output;
 }
 
@@ -174,6 +178,89 @@ std::wstring StringUtilities::TrimLeft(const std::wstring& input) {
 std::wstring StringUtilities::TrimRight(const std::wstring& input) {
     size_t endpos = input.find_last_not_of(WIDE_WHITESPACE);
     return (endpos == std::wstring::npos) ? L"" : input.substr(0, endpos + 1);
+}
+
+void StringUtilities::Split(const std::string& input,
+                            const std::string& delimiter,
+                            std::vector<std::string>* tokens) {
+  std::string input_copy = input;
+  while (input_copy.size() > 0) {
+    size_t delimiter_pos = input_copy.find(delimiter);
+    std::string token = input_copy.substr(0, delimiter_pos);
+    if (delimiter_pos == std::string::npos) {
+      input_copy = "";
+    } else {
+      input_copy = input_copy.substr(delimiter_pos + delimiter.size());
+    }
+    tokens->push_back(token);
+  }
+}
+
+void StringUtilities::Split(const std::wstring& input,
+                            const std::wstring& delimiter,
+                            std::vector<std::wstring>* tokens) {
+  std::wstring input_copy = input;
+  while (input_copy.size() > 0) {
+    size_t delimiter_pos = input_copy.find(delimiter);
+    std::wstring token = input_copy.substr(0, delimiter_pos);
+    if (delimiter_pos == std::wstring::npos) {
+      input_copy = L"";
+    } else {
+      input_copy = input_copy.substr(delimiter_pos + delimiter.size());
+    }
+    tokens->push_back(token);
+  }
+}
+
+std::wstring StringUtilities::CreateGuid() {
+  UUID guid;
+  RPC_WSTR guid_string = NULL;
+  RPC_STATUS status = ::UuidCreate(&guid);
+  if (status != RPC_S_OK) {
+    // If we encounter an error, not bloody much we can do about it.
+    // Just log it and continue.
+    // LOG(WARN) << "UuidCreate returned a status other then RPC_S_OK: " << status;
+  }
+  status = ::UuidToString(&guid, &guid_string);
+  if (status != RPC_S_OK) {
+    // If we encounter an error, not bloody much we can do about it.
+    // Just log it and continue.
+    // LOG(WARN) << "UuidToString returned a status other then RPC_S_OK: " << status;
+  }
+
+  // RPC_WSTR is currently typedef'd in RpcDce.h (pulled in by rpc.h)
+  // as unsigned short*. It needs to be typedef'd as wchar_t*
+  wchar_t* cast_guid_string = reinterpret_cast<wchar_t*>(guid_string);
+  std::wstring returned_guid(cast_guid_string);
+
+  ::RpcStringFree(&guid_string);
+  return returned_guid;
+}
+
+void StringUtilities::ComposeUnicodeString(std::wstring* input) {
+  StringUtilities::NormalizeUnicodeString(NormalizationC, input);
+}
+
+void StringUtilities::DecomposeUnicodeString(std::wstring* input) {
+  StringUtilities::NormalizeUnicodeString(NormalizationD, input);
+}
+
+void StringUtilities::NormalizeUnicodeString(NORM_FORM normalization_form,
+                                             std::wstring* input) {
+  if (FALSE == ::IsNormalizedString(normalization_form, input->c_str(), -1)) {
+    int required = ::NormalizeString(normalization_form,
+                                     input->c_str(),
+                                     -1,
+                                     NULL,
+                                     0);
+    std::vector<wchar_t> buffer(required);
+    ::NormalizeString(normalization_form,
+                      input->c_str(),
+                      -1,
+                      &buffer[0],
+                      static_cast<int>(buffer.size()));
+    *input = &buffer[0];
+  }
 }
 
 } // namespace webdriver

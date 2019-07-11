@@ -1,15 +1,29 @@
+load("//java:version.bzl", "SE_VERSION")
+load("//java:rules.bzl", "java_library")
+
 java_library(
-  name = 'chrome',
-  srcs = glob(['*.java']),
-  deps = [
-    '//java/client/src/org/openqa/selenium:webdriver-api',
-    '//java/client/src/org/openqa/selenium/logging:logging',
-    '//java/client/src/org/openqa/selenium/net:net',
-    '//java/client/src/org/openqa/selenium/remote:api',
-    '//java/client/src/org/openqa/selenium/remote:capabilities',
-    '//java/client/src/org/openqa/selenium/remote:remote',
-    '//java/client/src/org/openqa/selenium/remote/service:service',
-    '//third_party/java/guava-libraries:guava-libraries',
-    '//third_party/java/json:json',
-  ],
+    name = "chrome",
+    maven_coords = "org.seleniumhq.selenium:selenium-chrome-driver:" + SE_VERSION,
+    maven_pom_template = "//java/client/src/org/openqa/selenium:template-pom",
+    module_info = "module-info.txt",
+    srcs = glob(["*.java"]),
+    exported_deps = [
+        "//java/client/src/org/openqa/selenium/chromium:chromium",
+        "//java/client/src/org/openqa/selenium/remote:remote",
+    ],
+    provided_deps = [
+        "//third_party/java/service:auto-service",
+    ],
+    annotation_processor_deps = [
+        "//third_party/java/auto:auto-common",
+        "//third_party/java/service:auto-service",
+        "//third_party/java/guava:guava",
+    ],
+    annotation_processors = [
+        "com.google.auto.service.processor.AutoServiceProcessor",
+    ],
+    deps = [
+        "//third_party/java/guava:guava",
+    ],
+    visibility = ["PUBLIC"],
 )

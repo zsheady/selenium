@@ -1,24 +1,23 @@
-/*
- * Copyright 2011 Software Freedom Conservancy.
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package com.thoughtworks.selenium;
 
-import com.google.common.base.Charsets;
-import com.google.common.collect.Lists;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import org.openqa.selenium.net.Urls;
 
@@ -33,14 +32,17 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.text.NumberFormat;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
  * Sends commands and retrieves results via HTTP.
- * 
+ *
  * @author Ben Griffiths, Jez Humble
+ * @deprecated The RC interface will be removed in Selenium 3.0. Please migrate to using WebDriver.
  */
+@Deprecated
 public class HttpCommandProcessor implements CommandProcessor {
 
   private String pathToServlet;
@@ -53,7 +55,7 @@ public class HttpCommandProcessor implements CommandProcessor {
   /**
    * Specifies a server host/port, a command to launch the browser, and a starting URL for the
    * browser.
-   * 
+   *
    * @param serverHost - the host name on which the Selenium Server resides
    * @param serverPort - the port on which the Selenium Server is listening
    * @param browserStartCommand - the command string used to launch the browser, e.g. "*firefox" or
@@ -74,7 +76,7 @@ public class HttpCommandProcessor implements CommandProcessor {
   /**
    * Specifies the URL to the CommandBridge servlet, a command to launch the browser, and a starting
    * URL for the browser.
-   * 
+   *
    * @param pathToServlet - the URL of the Selenium Server Driver, e.g.
    *        "http://localhost:4444/selenium-server/driver/" (don't forget the final slash!)
    * @param browserStartCommand - the command string used to launch the browser, e.g. "*firefox" or
@@ -89,10 +91,12 @@ public class HttpCommandProcessor implements CommandProcessor {
     this.extensionJs = "";
   }
 
+  @Override
   public String getRemoteControlServerLocation() {
     return rcServerLocation;
   }
 
+  @Override
   public String doCommand(String commandName, String[] args) {
     DefaultRemoteCommand command = new DefaultRemoteCommand(commandName, args);
     String result = executeCommandOnServlet(command.getCommandURLString());
@@ -109,7 +113,10 @@ public class HttpCommandProcessor implements CommandProcessor {
     throw new SeleniumException(message);
   }
 
-  /** Sends the specified command string to the bridge servlet */
+  /** Sends the specified command string to the bridge servlet
+   * @param command command to execute
+   * @return response from the command execution
+   */
   public String executeCommandOnServlet(String command) {
     try {
       return getCommandResponseAsString(command);
@@ -143,12 +150,12 @@ public class HttpCommandProcessor implements CommandProcessor {
 
   // for testing
   protected Writer getOutputStreamWriter(HttpURLConnection conn) throws IOException {
-    return new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), Charsets.UTF_8));
+    return new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), UTF_8));
   }
 
   // for testing
   protected Reader getInputStreamReader(HttpURLConnection conn) throws IOException {
-    return new InputStreamReader(conn.getInputStream(), "UTF-8");
+    return new InputStreamReader(conn.getInputStream(), UTF_8);
   }
 
   // for testing
@@ -177,7 +184,7 @@ public class HttpCommandProcessor implements CommandProcessor {
         if (responsecode == HttpURLConnection.HTTP_MOVED_PERM) {
           pathToServlet = uc.getHeaderField("Location");
         } else if (responsecode != HttpURLConnection.HTTP_OK) {
-          throwAssertionFailureExceptionOrError(uc.getResponseMessage());
+          throwAssertionFailureExceptionOrError(uc.getResponseMessage() + " URL: " + result);
         } else {
           rdr = getInputStreamReader(uc);
           responseString = stringContentsOfInputStream(rdr);
@@ -223,19 +230,22 @@ public class HttpCommandProcessor implements CommandProcessor {
 
   /**
    * This should be invoked before start().
-   * 
+   *
    * @param extensionJs the extra extension Javascript to include in this browser session.
    */
+  @Override
   public void setExtensionJs(String extensionJs) {
     this.extensionJs = extensionJs;
   }
 
+  @Override
   public void start() {
     String result = getString("getNewBrowserSession",
         new String[] {browserStartCommand, browserURL, extensionJs});
     setSessionInProgress(result);
   }
 
+  @Override
   public void start(String optionsString) {
     String result = getString("getNewBrowserSession",
         new String[] {browserStartCommand, browserURL,
@@ -246,9 +256,10 @@ public class HttpCommandProcessor implements CommandProcessor {
   /**
    * Wraps the version of start() that takes a String parameter, sending it the result of calling
    * toString() on optionsObject, which will likely be a BrowserConfigurationOptions instance.
-   * 
-   * @param optionsObject
+   *
+   * @param optionsObject start options
    */
+  @Override
   public void start(Object optionsObject) {
     start(optionsObject.toString());
   }
@@ -257,6 +268,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     sessionId = result;
   }
 
+  @Override
   public void stop() {
     if (hasSessionInProgress()) {
       doCommand("testComplete", null);
@@ -268,6 +280,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return null != sessionId;
   }
 
+  @Override
   public String getString(String commandName, String[] args) {
     String result = doCommand(commandName, args);
     if (result.length() >= "OK,".length()) {
@@ -277,6 +290,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return "";
   }
 
+  @Override
   public String[] getStringArray(String commandName, String[] args) {
     String result = getString(commandName, args);
     return parseCSV(result);
@@ -286,13 +300,13 @@ public class HttpCommandProcessor implements CommandProcessor {
    * Convert backslash-escaped comma-delimited string into String array. As described in SRC-CDP
    * spec section 5.2.1.2, these strings are comma-delimited, but commas can be escaped with a
    * backslash "\". Backslashes can also be escaped as a double-backslash.
-   * 
+   *
    * @param input the unparsed string, e.g. "veni\, vidi\, vici,c:\\foo\\bar,c:\\I came\, I
    *        \\saw\\\, I conquered"
    * @return the string array resulting from parsing this string
    */
   public static String[] parseCSV(String input) {
-    List<String> output = Lists.newArrayList();
+    List<String> output = new ArrayList<>();
     StringBuffer sb = new StringBuffer();
     for (int i = 0; i < input.length(); i++) {
       char c = input.charAt(i);
@@ -313,6 +327,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return output.toArray(new String[output.size()]);
   }
 
+  @Override
   public Number getNumber(String commandName, String[] args) {
     String result = getString(commandName, args);
     Number n;
@@ -328,6 +343,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return n;
   }
 
+  @Override
   public Number[] getNumberArray(String commandName, String[] args) {
     String[] result = getStringArray(commandName, args);
     Number[] n = new Number[result.length];
@@ -341,6 +357,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     return n;
   }
 
+  @Override
   public boolean getBoolean(String commandName, String[] args) {
     String result = getString(commandName, args);
     boolean b;
@@ -355,6 +372,7 @@ public class HttpCommandProcessor implements CommandProcessor {
     throw new RuntimeException("result was neither 'true' nor 'false': " + result);
   }
 
+  @Override
   public boolean[] getBooleanArray(String commandName, String[] args) {
     String[] result = getStringArray(commandName, args);
     boolean[] b = new boolean[result.length];

@@ -1,16 +1,19 @@
-// Copyright 2012 Software Freedom Conservancy
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+//   http://www.apache.org/licenses/LICENSE-2.0
 //
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 /**
  * @fileoverview Utilities related to color and color conversion.
@@ -76,7 +79,7 @@ bot.color.HEX_TRIPLET_RE_ = /#([0-9a-fA-F])([0-9a-fA-F])([0-9a-fA-F])/;
 /**
  * Converts a hex representation of a color to RGB.
  * @param {string} hexOrColorName Color to convert.
- * @return {Array} array containing [r, g, b, 1] as ints in [0, 255] or null
+ * @return {?Array} array containing [r, g, b, 1] as ints in [0, 255] or null
  *     for invalid colors.
  * @private
  */
@@ -125,7 +128,7 @@ bot.color.RGBA_COLOR_RE_ =
  * format '(r, g, b, a)', or 'rgba(r, g, b, a)', where r, g, b are ints in
  * [0, 255] and a is a float in [0, 1].
  * @param {string} str String to check.
- * @return {Array.<number>} the integers [r, g, b, a] for valid colors or null
+ * @return {?Array.<number>} the integers [r, g, b, a] for valid colors or null
  *     for invalid colors.
  * @private
  */
@@ -164,7 +167,7 @@ bot.color.RGB_COLOR_RE_ =
  * '(r, g, b)', or 'rgb(r, g, b)', where each color component is an int in
  * [0, 255].
  * @param {string} str String to check.
- * @return {Array.<number>} the integers [r, g, b, 1] for valid colors or null
+ * @return {?Array.<number>} the integers [r, g, b, 1] for valid colors or null
  *     for invalid colors.
  * @private
  */

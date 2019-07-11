@@ -1,38 +1,42 @@
-#!/usr/bin/python
+# Licensed to the Software Freedom Conservancy (SFC) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The SFC licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
 #
-# Copyright 2012 Webdriver_name committers
-# Copyright 2012 Google Inc.
+#   http://www.apache.org/licenses/LICENSE-2.0
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
-import os
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 import base64
+import os
+
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from selenium.webdriver.common.options import ArgOptions
 
 
-class Options(object):
+class Options(ArgOptions):
+    KEY = "goog:chromeOptions"
 
     def __init__(self):
+        super(Options, self).__init__()
         self._binary_location = ''
-        self._arguments = []
         self._extension_files = []
         self._extensions = []
         self._experimental_options = {}
+        self._debugger_address = None
 
     @property
     def binary_location(self):
         """
-        Returns the location of the binary otherwise an empty string
+        :Returns: The location of the binary, otherwise an empty string
         """
         return self._binary_location
 
@@ -47,29 +51,28 @@ class Options(object):
         self._binary_location = value
 
     @property
-    def arguments(self):
+    def debugger_address(self):
         """
-        Returns a list of arguments needed for the browser
+        :Returns: The address of the remote devtools instance
         """
-        return self._arguments
+        return self._debugger_address
 
-    def add_argument(self, argument):
+    @debugger_address.setter
+    def debugger_address(self, value):
         """
-        Adds an argument to the list
+        Allows you to set the address of the remote devtools instance
+        that the ChromeDriver instance will try to connect to during an
+        active wait.
 
         :Args:
-         - Sets the arguments
+         - value: address of remote devtools instance if any (hostname[:port])
         """
-        if argument:
-            self._arguments.append(argument)
-        else:
-            raise ValueError("argument can not be null")
+        self._debugger_address = value
 
     @property
     def extensions(self):
         """
-        Returns a list of encoded extensions that will be loaded into chrome
-
+        :Returns: A list of encoded extensions that will be loaded into chrome
         """
         encoded_extensions = []
         for ext in self._extension_files:
@@ -88,11 +91,12 @@ class Options(object):
         to the ChromeDriver
 
         :Args:
-         - extension: path to the *.crx file
+         - extension: path to the \\*.crx file
         """
         if extension:
-            if os.path.exists(extension):
-                self._extension_files.append(extension)
+            extension_to_add = os.path.abspath(os.path.expanduser(extension))
+            if os.path.exists(extension_to_add):
+                self._extension_files.append(extension_to_add)
             else:
                 raise IOError("Path to the extension doesn't exist")
         else:
@@ -114,7 +118,7 @@ class Options(object):
     @property
     def experimental_options(self):
         """
-        Returns a dictionary of experimental options for chrome.
+        :Returns: A dictionary of experimental options for chrome
         """
         return self._experimental_options
 
@@ -122,26 +126,52 @@ class Options(object):
         """
         Adds an experimental option which is passed to chrome.
 
-        Args:
+        :Args:
           name: The experimental option name.
           value: The option value.
         """
         self._experimental_options[name] = value
 
+    @property
+    def headless(self):
+        """
+        :Returns: True if the headless argument is set, else False
+        """
+        return '--headless' in self._arguments
+
+    @headless.setter
+    def headless(self, value):
+        """
+        Sets the headless argument
+
+        :Args:
+          value: boolean value indicating to set the headless option
+        """
+        args = {'--headless'}
+        if value is True:
+            self._arguments.extend(args)
+        else:
+            self._arguments = list(set(self._arguments) - args)
+
     def to_capabilities(self):
         """
-            Creates a capabilities with all the options that have been set and
+        Creates a capabilities with all the options that have been set
 
-            returns a dictionary with everything
+        :Returns: A dictionary with everything
         """
-        chrome = DesiredCapabilities.CHROME.copy()
-
+        caps = self._caps
         chrome_options = self.experimental_options.copy()
         chrome_options["extensions"] = self.extensions
         if self.binary_location:
             chrome_options["binary"] = self.binary_location
         chrome_options["args"] = self.arguments
+        if self.debugger_address:
+            chrome_options["debuggerAddress"] = self.debugger_address
 
-        chrome["chromeOptions"] = chrome_options
+        caps[self.KEY] = chrome_options
 
-        return chrome
+        return caps
+
+    @property
+    def default_capabilities(self):
+        return DesiredCapabilities.CHROME.copy()

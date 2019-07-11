@@ -22,7 +22,6 @@ goog.provide('goog.dom.fullscreen.EventType');
 
 goog.require('goog.dom');
 goog.require('goog.userAgent');
-goog.require('goog.userAgent.product');
 
 
 /**
@@ -31,9 +30,20 @@ goog.require('goog.userAgent.product');
  */
 goog.dom.fullscreen.EventType = {
   /** Dispatched by the Document when the fullscreen status changes. */
-  CHANGE: goog.userAgent.WEBKIT ?
-      'webkitfullscreenchange' :
-      'mozfullscreenchange'
+  CHANGE: (function() {
+    if (goog.userAgent.WEBKIT) {
+      return 'webkitfullscreenchange';
+    }
+    if (goog.userAgent.GECKO) {
+      return 'mozfullscreenchange';
+    }
+    if (goog.userAgent.IE) {
+      return 'MSFullscreenChange';
+    }
+    // Opera 12-14, and W3C standard (Draft):
+    // https://dvcs.w3.org/hg/fullscreen/raw-file/tip/Overview.html
+    return 'fullscreenchange';
+  })()
 };
 
 
@@ -46,8 +56,11 @@ goog.dom.fullscreen.EventType = {
 goog.dom.fullscreen.isSupported = function(opt_domHelper) {
   var doc = goog.dom.fullscreen.getDocument_(opt_domHelper);
   var body = doc.body;
-  return !!body.webkitRequestFullScreen ||
-      (!!body.mozRequestFullScreen && doc.mozFullScreenEnabled);
+  return !!(
+      body.webkitRequestFullscreen ||
+      (body.mozRequestFullScreen && doc.mozFullScreenEnabled) ||
+      (body.msRequestFullscreen && doc.msFullscreenEnabled) ||
+      (body.requestFullscreen && doc.fullscreenEnabled));
 };
 
 
@@ -56,10 +69,14 @@ goog.dom.fullscreen.isSupported = function(opt_domHelper) {
  * @param {!Element} element The element to put full screen.
  */
 goog.dom.fullscreen.requestFullScreen = function(element) {
-  if (element.webkitRequestFullScreen) {
-    element.webkitRequestFullScreen();
+  if (element.webkitRequestFullscreen) {
+    element.webkitRequestFullscreen();
   } else if (element.mozRequestFullScreen) {
     element.mozRequestFullScreen();
+  } else if (element.msRequestFullscreen) {
+    element.msRequestFullscreen();
+  } else if (element.requestFullscreen) {
+    element.requestFullscreen();
   }
 };
 
@@ -68,15 +85,11 @@ goog.dom.fullscreen.requestFullScreen = function(element) {
  * Requests putting the element in full screen with full keyboard access.
  * @param {!Element} element The element to put full screen.
  */
-goog.dom.fullscreen.requestFullScreenWithKeys = function(
-    element) {
+goog.dom.fullscreen.requestFullScreenWithKeys = function(element) {
   if (element.mozRequestFullScreenWithKeys) {
     element.mozRequestFullScreenWithKeys();
-  } else if (element.webkitRequestFullScreen &&
-      element.ALLOW_KEYBOARD_INPUT &&
-      goog.userAgent.product.CHROME) {
-    // Safari has the ALLOW_KEYBOARD_INPUT property but using it gives an error.
-    element.webkitRequestFullScreen(element.ALLOW_KEYBOARD_INPUT);
+  } else if (element.webkitRequestFullscreen) {
+    element.webkitRequestFullscreen();
   } else {
     goog.dom.fullscreen.requestFullScreen(element);
   }
@@ -94,6 +107,10 @@ goog.dom.fullscreen.exitFullScreen = function(opt_domHelper) {
     doc.webkitCancelFullScreen();
   } else if (doc.mozCancelFullScreen) {
     doc.mozCancelFullScreen();
+  } else if (doc.msExitFullscreen) {
+    doc.msExitFullscreen();
+  } else if (doc.exitFullscreen) {
+    doc.exitFullscreen();
   }
 };
 
@@ -106,7 +123,32 @@ goog.dom.fullscreen.exitFullScreen = function(opt_domHelper) {
  */
 goog.dom.fullscreen.isFullScreen = function(opt_domHelper) {
   var doc = goog.dom.fullscreen.getDocument_(opt_domHelper);
-  return !!doc.webkitIsFullScreen || !!doc.mozFullScreen;
+  // IE 11 doesn't have similar boolean property, so check whether
+  // document.msFullscreenElement is null instead.
+  return !!(
+      doc.webkitIsFullScreen || doc.mozFullScreen || doc.msFullscreenElement ||
+      doc.fullscreenElement);
+};
+
+
+/**
+ * Get the root element in full screen mode.
+ * @param {!goog.dom.DomHelper=} opt_domHelper The DomHelper for the DOM being
+ *     queried. If not provided, use the current DOM.
+ * @return {?Element} The root element in full screen mode.
+ */
+goog.dom.fullscreen.getFullScreenElement = function(opt_domHelper) {
+  var doc = goog.dom.fullscreen.getDocument_(opt_domHelper);
+  var element_list = [
+    doc.webkitFullscreenElement, doc.mozFullScreenElement,
+    doc.msFullscreenElement, doc.fullscreenElement
+  ];
+  for (var i = 0; i < element_list.length; i++) {
+    if (element_list[i] != null) {
+      return element_list[i];
+    }
+  }
+  return null;
 };
 
 
@@ -118,7 +160,6 @@ goog.dom.fullscreen.isFullScreen = function(opt_domHelper) {
  * @private
  */
 goog.dom.fullscreen.getDocument_ = function(opt_domHelper) {
-  return opt_domHelper ?
-      opt_domHelper.getDocument() :
-      goog.dom.getDomHelper().getDocument();
+  return opt_domHelper ? opt_domHelper.getDocument() :
+                         goog.dom.getDomHelper().getDocument();
 };

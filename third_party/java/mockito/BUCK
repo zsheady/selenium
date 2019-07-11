@@ -1,14 +1,15 @@
-java_library(
-    name = 'mockito',
-    export_deps = True,
+prebuilt_jar(
+    name = "mockito-core",
+    maven_coords = "org.mockito:mockito-core:jar:2.26.0",
+    binary_jar = "mockito-core-2.26.0.jar",
+    source_jar = "mockito-core-2.26.0-sources.jar",
     deps = [
-      ':core',
-      '//third_party/java/objenesis:objenesis',
+        "//third_party/java/bytebuddy:byte-buddy",
+        "//third_party/java/bytebuddy:byte-buddy-agent",
+        "//third_party/java/objenesis:objenesis",
     ],
-    visibility = ['PUBLIC'],
-)
-
-prebuilt_jar(name = 'core',
-  binary_jar = 'mockito-core-1.9.5.jar',
-  source_jar = 'mockito-core-1.9.5-srcs.jar',
+    visibility = [
+        "//java/client/test/...",
+        "//java/server/test/...",
+    ],
 )

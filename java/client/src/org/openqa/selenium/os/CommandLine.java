@@ -1,22 +1,25 @@
-/*
-Copyright 2010 Selenium committers
-Copyright 2010 Software Freedom Conservancy
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.os;
 
+
+import static org.openqa.selenium.Platform.MAC;
+import static org.openqa.selenium.Platform.WINDOWS;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -27,15 +30,12 @@ import java.io.File;
 import java.io.OutputStream;
 import java.util.Map;
 
-import static org.openqa.selenium.Platform.WINDOWS;
-import static org.openqa.selenium.Platform.MAC;
-
 public class CommandLine {
 
   private OsProcess process;
 
   public CommandLine(String executable, String... args) {
-    process = new UnixProcess(executable, args);
+    process = new OsProcess(executable, args);
   }
 
   public CommandLine(String[] cmdarray) {
@@ -44,7 +44,7 @@ public class CommandLine {
     String[] args = new String[length];
     System.arraycopy(cmdarray, 1, args, 0, length);
 
-    process = new UnixProcess(executable, args);
+    process = new OsProcess(executable, args);
   }
 
   @VisibleForTesting
@@ -82,6 +82,14 @@ public class CommandLine {
     }
   }
 
+  public void updateDynamicLibraryPath(String extraPath) {
+    if (extraPath != null) {
+      String existing = System.getenv(getLibraryPathPropertyName());
+      String ldPath = existing != null ? existing + File.pathSeparator + extraPath : extraPath;
+      setEnvironmentVariable(getLibraryPathPropertyName(), ldPath);
+    }
+  }
+
   /**
    * @return The platform specific env property name which contains the library path.
    */
@@ -99,14 +107,6 @@ public class CommandLine {
     }
   }
 
-  /**
-   * @deprecated Use the commandline itself to execute your command.
-   */
-  @Deprecated
-  public static String find(String executable) {
-    return new ExecutableFinder().find(executable);
-  }
-
   public void executeAsync() {
     process.executeAsync();
   }
@@ -119,6 +119,14 @@ public class CommandLine {
   public void waitFor() {
     try {
       process.waitFor();
+    } catch (InterruptedException e) {
+      throw new WebDriverException(e);
+    }
+  }
+
+  public void waitFor(long timeout) {
+    try {
+      process.waitFor(timeout);
     } catch (InterruptedException e) {
       throw new WebDriverException(e);
     }
@@ -144,10 +152,10 @@ public class CommandLine {
   public int destroy() {
     return process.destroy();
   }
-  
+
   /**
    * Check whether the current command is still executing.
-   * 
+   *
    * @return true if the current command is still executing, false otherwise
    */
   public boolean isRunning() {
@@ -169,5 +177,9 @@ public class CommandLine {
 
   public void copyOutputTo(OutputStream out) {
     process.copyOutputTo(out);
+  }
+
+  public void checkForError() {
+    process.checkForError();
   }
 }

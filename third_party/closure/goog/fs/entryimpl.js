@@ -100,12 +100,12 @@ goog.fs.EntryImpl.prototype.getLastModified = function() {
 goog.fs.EntryImpl.prototype.getMetadata = function() {
   var d = new goog.async.Deferred();
 
-  this.entry_.getMetadata(
-      function(metadata) { d.callback(metadata); },
-      goog.bind(function(err) {
-        var msg = 'retrieving metadata for ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
-      }, this));
+  this.entry_.getMetadata(function(metadata) {
+    d.callback(metadata);
+  }, goog.bind(function(err) {
+    var msg = 'retrieving metadata for ' + this.getFullPath();
+    d.errback(new goog.fs.Error(err, msg));
+  }, this));
   return d;
 };
 
@@ -114,13 +114,14 @@ goog.fs.EntryImpl.prototype.getMetadata = function() {
 goog.fs.EntryImpl.prototype.moveTo = function(parent, opt_newName) {
   var d = new goog.async.Deferred();
   this.entry_.moveTo(
-      parent.dir_, opt_newName,
-      goog.bind(function(entry) { d.callback(this.wrapEntry(entry)); }, this),
-      goog.bind(function(err) {
+      /** @type {!goog.fs.DirectoryEntryImpl} */ (parent).dir_, opt_newName,
+      goog.bind(function(entry) {
+        d.callback(this.wrapEntry(entry));
+      }, this), goog.bind(function(err) {
         var msg = 'moving ' + this.getFullPath() + ' into ' +
             parent.getFullPath() +
             (opt_newName ? ', renaming to ' + opt_newName : '');
-        d.errback(new goog.fs.Error(err.code, msg));
+        d.errback(new goog.fs.Error(err, msg));
       }, this));
   return d;
 };
@@ -130,13 +131,14 @@ goog.fs.EntryImpl.prototype.moveTo = function(parent, opt_newName) {
 goog.fs.EntryImpl.prototype.copyTo = function(parent, opt_newName) {
   var d = new goog.async.Deferred();
   this.entry_.copyTo(
-      parent.dir_, opt_newName,
-      goog.bind(function(entry) { d.callback(this.wrapEntry(entry)); }, this),
-      goog.bind(function(err) {
+      /** @type {!goog.fs.DirectoryEntryImpl} */ (parent).dir_, opt_newName,
+      goog.bind(function(entry) {
+        d.callback(this.wrapEntry(entry));
+      }, this), goog.bind(function(err) {
         var msg = 'copying ' + this.getFullPath() + ' into ' +
             parent.getFullPath() +
             (opt_newName ? ', renaming to ' + opt_newName : '');
-        d.errback(new goog.fs.Error(err.code, msg));
+        d.errback(new goog.fs.Error(err, msg));
       }, this));
   return d;
 };
@@ -165,10 +167,9 @@ goog.fs.EntryImpl.prototype.toUri = goog.fs.EntryImpl.prototype.toUrl;
 goog.fs.EntryImpl.prototype.remove = function() {
   var d = new goog.async.Deferred();
   this.entry_.remove(
-      goog.bind(d.callback, d, true /* result */),
-      goog.bind(function(err) {
+      goog.bind(d.callback, d, true /* result */), goog.bind(function(err) {
         var msg = 'removing ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
+        d.errback(new goog.fs.Error(err, msg));
       }, this));
   return d;
 };
@@ -177,14 +178,12 @@ goog.fs.EntryImpl.prototype.remove = function() {
 /** @override */
 goog.fs.EntryImpl.prototype.getParent = function() {
   var d = new goog.async.Deferred();
-  this.entry_.getParent(
-      goog.bind(function(parent) {
-        d.callback(new goog.fs.DirectoryEntryImpl(this.fs_, parent));
-      }, this),
-      goog.bind(function(err) {
-        var msg = 'getting parent of ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
-      }, this));
+  this.entry_.getParent(goog.bind(function(parent) {
+    d.callback(new goog.fs.DirectoryEntryImpl(this.fs_, parent));
+  }, this), goog.bind(function(err) {
+    var msg = 'getting parent of ' + this.getFullPath();
+    d.errback(new goog.fs.Error(err, msg));
+  }, this));
   return d;
 };
 
@@ -202,9 +201,10 @@ goog.fs.EntryImpl.prototype.getParent = function() {
  * @constructor
  * @extends {goog.fs.EntryImpl}
  * @implements {goog.fs.DirectoryEntry}
+ * @final
  */
 goog.fs.DirectoryEntryImpl = function(fs, dir) {
-  goog.base(this, fs, dir);
+  goog.fs.DirectoryEntryImpl.base(this, 'constructor', fs, dir);
 
   /**
    * The underlying DirectoryEntry object.
@@ -221,30 +221,26 @@ goog.inherits(goog.fs.DirectoryEntryImpl, goog.fs.EntryImpl);
 goog.fs.DirectoryEntryImpl.prototype.getFile = function(path, opt_behavior) {
   var d = new goog.async.Deferred();
   this.dir_.getFile(
-      path, this.getOptions_(opt_behavior),
-      goog.bind(function(entry) {
+      path, this.getOptions_(opt_behavior), goog.bind(function(entry) {
         d.callback(new goog.fs.FileEntryImpl(this.fs_, entry));
-      }, this),
-      goog.bind(function(err) {
+      }, this), goog.bind(function(err) {
         var msg = 'loading file ' + path + ' from ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
+        d.errback(new goog.fs.Error(err, msg));
       }, this));
   return d;
 };
 
 
 /** @override */
-goog.fs.DirectoryEntryImpl.prototype.getDirectory =
-    function(path, opt_behavior) {
+goog.fs.DirectoryEntryImpl.prototype.getDirectory = function(
+    path, opt_behavior) {
   var d = new goog.async.Deferred();
   this.dir_.getDirectory(
-      path, this.getOptions_(opt_behavior),
-      goog.bind(function(entry) {
+      path, this.getOptions_(opt_behavior), goog.bind(function(entry) {
         d.callback(new goog.fs.DirectoryEntryImpl(this.fs_, entry));
-      }, this),
-      goog.bind(function(err) {
+      }, this), goog.bind(function(err) {
         var msg = 'loading directory ' + path + ' from ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
+        d.errback(new goog.fs.Error(err, msg));
       }, this));
   return d;
 };
@@ -262,8 +258,11 @@ goog.fs.DirectoryEntryImpl.prototype.createPath = function(path) {
 
   // Filter out any empty path components caused by '//' or a leading slash.
   var parts = goog.array.filter(path.split('/'), goog.functions.identity);
-  var existed = [];
 
+  /**
+   * @param {goog.fs.DirectoryEntryImpl} dir
+   * @return {!goog.async.Deferred}
+   */
   function getNextDirectory(dir) {
     if (!parts.length) {
       return goog.async.Deferred.succeed(dir);
@@ -294,7 +293,7 @@ goog.fs.DirectoryEntryImpl.prototype.listDirectory = function() {
 
   var errorCallback = goog.bind(function(err) {
     var msg = 'listing directory ' + this.getFullPath();
-    d.errback(new goog.fs.Error(err.code, msg));
+    d.errback(new goog.fs.Error(err, msg));
   }, this);
 
   var successCallback = goog.bind(function(entries) {
@@ -317,10 +316,9 @@ goog.fs.DirectoryEntryImpl.prototype.listDirectory = function() {
 goog.fs.DirectoryEntryImpl.prototype.removeRecursively = function() {
   var d = new goog.async.Deferred();
   this.dir_.removeRecursively(
-      goog.bind(d.callback, d, true /* result */),
-      goog.bind(function(err) {
+      goog.bind(d.callback, d, true /* result */), goog.bind(function(err) {
         var msg = 'removing ' + this.getFullPath() + ' recursively';
-        d.errback(new goog.fs.Error(err.code, msg));
+        d.errback(new goog.fs.Error(err, msg));
       }, this));
   return d;
 };
@@ -332,7 +330,7 @@ goog.fs.DirectoryEntryImpl.prototype.removeRecursively = function() {
  *
  * @param {goog.fs.DirectoryEntry.Behavior=} opt_behavior The behavior for
  *     existing files.
- * @return {Object.<boolean>} The options object expected by the File API.
+ * @return {!Object<boolean>} The options object expected by the File API.
  * @private
  */
 goog.fs.DirectoryEntryImpl.prototype.getOptions_ = function(opt_behavior) {
@@ -358,9 +356,10 @@ goog.fs.DirectoryEntryImpl.prototype.getOptions_ = function(opt_behavior) {
  * @constructor
  * @extends {goog.fs.EntryImpl}
  * @implements {goog.fs.FileEntry}
+ * @final
  */
 goog.fs.FileEntryImpl = function(fs, file) {
-  goog.base(this, fs, file);
+  goog.fs.FileEntryImpl.base(this, 'constructor', fs, file);
 
   /**
    * The underlying FileEntry object.
@@ -376,12 +375,12 @@ goog.inherits(goog.fs.FileEntryImpl, goog.fs.EntryImpl);
 /** @override */
 goog.fs.FileEntryImpl.prototype.createWriter = function() {
   var d = new goog.async.Deferred();
-  this.file_.createWriter(
-      function(w) { d.callback(new goog.fs.FileWriter(w)); },
-      goog.bind(function(err) {
-        var msg = 'creating writer for ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
-      }, this));
+  this.file_.createWriter(function(w) {
+    d.callback(new goog.fs.FileWriter(w));
+  }, goog.bind(function(err) {
+    var msg = 'creating writer for ' + this.getFullPath();
+    d.errback(new goog.fs.Error(err, msg));
+  }, this));
   return d;
 };
 
@@ -389,11 +388,9 @@ goog.fs.FileEntryImpl.prototype.createWriter = function() {
 /** @override */
 goog.fs.FileEntryImpl.prototype.file = function() {
   var d = new goog.async.Deferred();
-  this.file_.file(
-      function(f) { d.callback(f); },
-      goog.bind(function(err) {
-        var msg = 'getting file for ' + this.getFullPath();
-        d.errback(new goog.fs.Error(err.code, msg));
-      }, this));
+  this.file_.file(function(f) { d.callback(f); }, goog.bind(function(err) {
+    var msg = 'getting file for ' + this.getFullPath();
+    d.errback(new goog.fs.Error(err, msg));
+  }, this));
   return d;
 };

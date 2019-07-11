@@ -1,60 +1,63 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.support;
 
-import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
-import static org.hamcrest.Matchers.nullValue;
-import static org.junit.Assert.assertThat;
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.support.pagefactory.FieldDecorator;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.TickingClock;
+import org.openqa.selenium.support.ui.Wait;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
-import java.lang.reflect.Field;
 import java.util.List;
 
 public class PageFactoryTest {
 
-  private WebDriver driver = null;
+  private WebDriver driver;
 
   @Test
   public void shouldProxyElementsInAnInstantiatedPage() {
     PublicPage page = new PublicPage();
 
-    assertThat(page.q, is(nullValue()));
-    assertThat(page.list, is(nullValue()));
+    assertThat(page.q).isNull();
+    assertThat(page.list).isNull();
 
     PageFactory.initElements(driver, page);
 
-    assertThat(page.q, is(notNullValue()));
-    assertThat(page.list, is(notNullValue()));
+    assertThat(page.q).isNotNull();
+    assertThat(page.list).isNotNull();
   }
 
   @Test
   public void shouldInsertProxiesForPublicWebElements() {
     PublicPage page = PageFactory.initElements(driver, PublicPage.class);
 
-    assertThat(page.q, is(notNullValue()));
-    assertThat(page.list, is(notNullValue()));
+    assertThat(page.q).isNotNull();
+    assertThat(page.list).isNotNull();
   }
 
   @Test
@@ -63,16 +66,16 @@ public class PageFactoryTest {
 
     PageFactory.initElements(driver, page);
 
-    assertThat(page.q, is(notNullValue()));
-    assertThat(page.list, is(notNullValue()));
-    assertThat(page.submit, is(notNullValue()));
+    assertThat(page.q).isNotNull();
+    assertThat(page.list).isNotNull();
+    assertThat(page.submit).isNotNull();
   }
 
   @Test
   public void shouldProxyRenderedWebElementFields() {
     PublicPage page = PageFactory.initElements(driver, PublicPage.class);
 
-    assertThat(page.rendered, is(notNullValue()));
+    assertThat(page.rendered).isNotNull();
   }
 
   @Test
@@ -81,8 +84,8 @@ public class PageFactoryTest {
 
     PageFactory.initElements(driver, page);
 
-    assertThat(page.getField(), is(notNullValue()));
-    assertThat(page.getList(), is(notNullValue()));
+    assertThat(page.getField()).isNotNull();
+    assertThat(page.getList()).isNotNull();
   }
 
   @Test
@@ -91,7 +94,7 @@ public class PageFactoryTest {
 
     ConstructedPage page = PageFactory.initElements(driver, ConstructedPage.class);
 
-    assertThat(driver, equalTo(page.driver));
+    assertThat(driver).isEqualTo(page.driver);
   }
 
   @Test
@@ -101,13 +104,9 @@ public class PageFactoryTest {
     WebElement q = mock(WebElement.class);
     page.q = q;
 
-    PageFactory.initElements(new FieldDecorator() {
-      public Object decorate(ClassLoader loader, Field field) {
-        return null;
-      }
-    }, page);
+    PageFactory.initElements((loader, field) -> null, page);
 
-    assertThat(page.q, equalTo(q));
+    assertThat(page.q).isEqualTo(q);
   }
 
   @Test
@@ -115,13 +114,9 @@ public class PageFactoryTest {
     NonWebElementsPage page = new NonWebElementsPage();
     // Assign not-null values
 
-    PageFactory.initElements(new FieldDecorator() {
-      public Object decorate(ClassLoader loader, Field field) {
-        return new Integer(5);
-      }
-    }, page);
+    PageFactory.initElements((loader, field) -> 5, page);
 
-    assertThat(page.num, equalTo(new Integer(5)));
+    assertThat(page.num).isEqualTo(5);
   }
 
   @Test
@@ -130,7 +125,7 @@ public class PageFactoryTest {
 
     PageFactory.initElements(driver, page);
 
-    assertThat(page.elements, is(nullValue()));
+    assertThat(page.elements).isNull();
   }
 
   @Test
@@ -139,40 +134,48 @@ public class PageFactoryTest {
 
     PageFactory.initElements(driver, page);
 
-    assertThat(page.objects, is(nullValue()));
+    assertThat(page.objects).isNull();
   }
-  
+
   @Test
   public void shouldNotDecorateUnTypedLists() {
     UnmarkedListPage page = new UnmarkedListPage();
 
     PageFactory.initElements(driver, page);
 
-    assertThat(page.untyped, is(nullValue()));
+    assertThat(page.untyped).isNull();
   }
 
   @Test
   public void shouldComplainWhenMoreThanOneFindByAttributeIsSet() {
     GrottyPage page = new GrottyPage();
 
-    try {
-      PageFactory.initElements((WebDriver) null, page);
-      fail("Should not have allowed page to be initialised");
-    } catch (IllegalArgumentException e) {
-      // this is expected
-    }
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> PageFactory.initElements((WebDriver) null, page));
   }
 
   @Test
   public void shouldComplainWhenMoreThanOneFindByShortFormAttributeIsSet() {
     GrottyPage2 page = new GrottyPage2();
 
-    try {
-      PageFactory.initElements((WebDriver) null, page);
-      fail("Should not have allowed page to be initialised");
-    } catch (IllegalArgumentException e) {
-      // this is expected
-    }
+    assertThatExceptionOfType(IllegalArgumentException.class)
+        .isThrownBy(() -> PageFactory.initElements((WebDriver) null, page));
+  }
+
+  @Test
+  public void shouldNotThrowANoSuchElementExceptionWhenUsedWithAFluentWait() {
+    driver = mock(WebDriver.class);
+    when(driver.findElement(Mockito.any())).thenThrow(new NoSuchElementException("because"));
+
+    TickingClock clock = new TickingClock();
+    Wait<WebDriver> wait = new WebDriverWait(driver, clock, clock, 1, 1001);
+
+    PublicPage page = new PublicPage();
+    PageFactory.initElements(driver, page);
+    WebElement element = page.q;
+
+    assertThatExceptionOfType(TimeoutException.class)
+        .isThrownBy(() -> wait.until(ExpectedConditions.visibilityOf(element)));
   }
 
   public static class PublicPage {

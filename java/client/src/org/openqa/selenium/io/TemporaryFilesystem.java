@@ -1,18 +1,19 @@
-/*
-Copyright 2007-2009 Selenium committers
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-     http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
 
 package org.openqa.selenium.io;
 
@@ -22,31 +23,41 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * A wrapper around temporary filesystem behaviour.
  */
 public class TemporaryFilesystem {
 
-  private final Set<File> temporaryFiles = new CopyOnWriteArraySet<File>();
+  private final Set<File> temporaryFiles = new CopyOnWriteArraySet<>();
   private final File baseDir;
-  private final Thread shutdownHook = new Thread() {  // Thread safety reviewed
-    @Override
-    public void run() {
-      deleteTemporaryFiles();
-    }
-  };
+  // Thread safety reviewed
+  private final Thread shutdownHook = new Thread(this::deleteTemporaryFiles);
 
   private static File sysTemp = new File(System.getProperty("java.io.tmpdir"));
+  private static final ReadWriteLock lock = new ReentrantReadWriteLock();
   private static TemporaryFilesystem instance = new TemporaryFilesystem(sysTemp);
 
   public static TemporaryFilesystem getDefaultTmpFS() {
-    return instance;
+    Lock readLock = lock.readLock();
+    readLock.lock();
+    try {
+      return instance;
+    } finally {
+      readLock.unlock();
+    }
   }
 
   public static void setTemporaryDirectory(File directory) {
-    synchronized (TemporaryFilesystem.class) {
+    Lock writeLock = lock.writeLock();
+    writeLock.lock();
+    try {
       instance = new TemporaryFilesystem(directory);
+    } finally {
+      writeLock.unlock();
     }
   }
 
@@ -144,6 +155,10 @@ public class TemporaryFilesystem {
   }
 
   public boolean deleteBaseDir() {
-    return baseDir.delete();
+    boolean wasDeleted = baseDir.delete();
+    if (!baseDir.exists()) {
+      Runtime.getRuntime().removeShutdownHook(shutdownHook);
+    }
+    return wasDeleted;
   }
 }

@@ -33,9 +33,6 @@ goog.require('goog.math.Coordinate');
  *     a radius as well.
  * @param {number} n The number of vertices.
  * @return {!goog.graphics.Path} The path.
- * @deprecated goog.graphics is deprecated. It existed to abstract over browser
- *     differences before the canvas tag was widely supported.  See
- *     http://en.wikipedia.org/wiki/Canvas_element for details.
  */
 goog.graphics.paths.createRegularNGon = function(center, vertex, n) {
   var path = new goog.graphics.Path();
@@ -45,8 +42,9 @@ goog.graphics.paths.createRegularNGon = function(center, vertex, n) {
   var radius = goog.math.Coordinate.distance(center, vertex);
   for (var i = 1; i < n; i++) {
     var angle = startAngle + 2 * Math.PI * (i / n);
-    path.lineTo(center.x + radius * Math.cos(angle),
-                center.y + radius * Math.sin(angle));
+    path.lineTo(
+        center.x + radius * Math.cos(angle),
+        center.y + radius * Math.sin(angle));
   }
   path.close();
   return path;
@@ -62,9 +60,6 @@ goog.graphics.paths.createRegularNGon = function(center, vertex, n) {
  * @param {?number} bHead The size of the arrow head at point B.
  *     0 omits the head.
  * @return {!goog.graphics.Path} The path.
- * @deprecated goog.graphics is deprecated. It existed to abstract over browser
- *     differences before the canvas tag was widely supported.  See
- *     http://en.wikipedia.org/wiki/Canvas_element for details.
  */
 goog.graphics.paths.createArrow = function(a, b, aHead, bHead) {
   var path = new goog.graphics.Path();
@@ -76,8 +71,7 @@ goog.graphics.paths.createArrow = function(a, b, aHead, bHead) {
     path.appendPath(
         goog.graphics.paths.createRegularNGon(
             new goog.math.Coordinate(
-                a.x + aHead * Math.cos(angle),
-                a.y + aHead * Math.sin(angle)),
+                a.x + aHead * Math.cos(angle), a.y + aHead * Math.sin(angle)),
             a, 3));
   }
   if (bHead) {
