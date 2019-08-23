@@ -740,6 +740,23 @@ bot.dom.getOverflowState = function(elem, opt_region) {
       return bot.dom.OverflowState.HIDDEN;
     }
 
+    if (goog.userAgent.IE) {
+      // On IE, if the containing element has scroll bars, the
+      // height and width given by getComputedStyle differ from the
+      // client bounding rect. To avoid accidentally assuming the
+      // point is not overflowed, when it's really behind a scrollbar,
+      // use the effective height and width of the container.
+      var effectiveWidth = goog.string.parseInt(bot.dom.getEffectiveStyle(container, "width"));
+      var effectiveHeight = goog.string.parseInt(bot.dom.getEffectiveStyle(container, "height"));
+      if (effectiveWidth != containerRect.width ||
+          effectiveHeight != containerRect.height) { 
+        containerRect = new goog.math.Rect(containerRect.left,
+                                           containerRect.top,
+                                           effectiveWidth,
+                                           effectiveHeight);
+      }
+    }
+
     // Check "underflow": if an element is to the left or above the container
     var underflowsX = region.right < containerRect.left;
     var underflowsY = region.bottom < containerRect.top;
@@ -1176,8 +1193,8 @@ bot.dom.appendVisibleTextLinesFromTextNode_ = function(textNode, lines,
   }
 
   if (textTransform == 'capitalize') {
-    text = text.replace(/(^|\s)(\S)/g, function() {
-      return arguments[1] + arguments[2].toUpperCase();
+    text = text.replace(/\b(\S)/g, function() {
+      return arguments[1].toUpperCase();
     });
   } else if (textTransform == 'uppercase') {
     text = text.toUpperCase();

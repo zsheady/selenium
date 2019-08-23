@@ -1,4 +1,4 @@
-load("@io_bazel_rules_dotnet//dotnet:defs.bzl", "core_library", "core_resource", "net_library")
+load("@io_bazel_rules_dotnet//dotnet:defs.bzl", "netstandard_library", "core_resource", "net_library")
 load("//dotnet:merge-assemblies.bzl", "merged_assembly")
 load("//dotnet:nuget.bzl", "nuget_package")
 load(
@@ -47,7 +47,7 @@ load(
     ],
 ) for framework in SUPPORTED_NET_FRAMEWORKS]
 
-core_library(
+netstandard_library(
     name = "netstandard2.0",
     srcs = glob([
         "*.cs",
@@ -75,7 +75,7 @@ core_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@io_bazel_rules_dotnet//dotnet/stdlib.core:netstandard.dll",
+        "@io_bazel_rules_dotnet//dotnet/stdlib.netstandard:netstandard.dll",
         "@json.net//:netcore",
     ],
 )
@@ -120,7 +120,7 @@ core_library(
     ],
 ) for framework in SUPPORTED_NET_FRAMEWORKS]
 
-core_library(
+netstandard_library(
     name = "netstandard2.0-strongnamed",
     srcs = glob([
         "*.cs",
@@ -149,7 +149,7 @@ core_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "@io_bazel_rules_dotnet//dotnet/stdlib.core:netstandard.dll",
+        "@io_bazel_rules_dotnet//dotnet/stdlib.netstandard:netstandard.dll",
         "@json.net//:netcore",
     ],
 )
@@ -157,20 +157,20 @@ core_library(
 [merged_assembly(
     name = "{}".format(framework),
     out = "merged/{}/WebDriver.dll".format(framework),
+    dotnet_context_data = "@io_bazel_rules_dotnet//:net_context_data_{}".format(framework),
     src_assembly = ":{}assembly".format(framework),
     visibility = ["//visibility:public"],
     deps = ["@json.net//:net45"],
-    dotnet_context_data = "@io_bazel_rules_dotnet//:net_context_data_{}".format(framework),
 ) for framework in SUPPORTED_NET_FRAMEWORKS]
 
 [merged_assembly(
     name = "{}-strongnamed".format(framework),
     out = "strongnamed/{}/WebDriver.dll".format(framework),
+    dotnet_context_data = "@io_bazel_rules_dotnet//:net_context_data_{}".format(framework),
     keyfile = "//dotnet:WebDriver.snk",
     src_assembly = ":{}assembly-strongnamed".format(framework),
     visibility = ["//visibility:public"],
     deps = ["@json.net//:net45"],
-    dotnet_context_data = "@io_bazel_rules_dotnet//:net_context_data_{}".format(framework),
 ) for framework in SUPPORTED_NET_FRAMEWORKS]
 
 nuget_package(
