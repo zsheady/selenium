@@ -1,3 +1,20 @@
+// Licensed to the Software Freedom Conservancy (SFC) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The SFC licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package org.openqa.selenium.support.devtools;
 
 import com.google.common.collect.ImmutableList;
@@ -6,10 +23,8 @@ import org.openqa.selenium.devtools.DevTools;
 import org.openqa.selenium.devtools.HasDevTools;
 import org.openqa.selenium.devtools.fetch.Fetch;
 import org.openqa.selenium.devtools.fetch.model.HeaderEntry;
-import org.openqa.selenium.devtools.fetch.model.RequestPattern;
 import org.openqa.selenium.devtools.fetch.model.RequestPaused;
 import org.openqa.selenium.devtools.network.model.Request;
-import org.openqa.selenium.devtools.network.model.ResourceType;
 import org.openqa.selenium.remote.http.Contents;
 import org.openqa.selenium.remote.http.HttpMethod;
 import org.openqa.selenium.remote.http.HttpRequest;
@@ -23,7 +38,6 @@ import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import static org.openqa.selenium.devtools.fetch.model.RequestStage.REQUEST;
 import static org.openqa.selenium.remote.http.Contents.utf8String;
 
 
@@ -36,14 +50,14 @@ import static org.openqa.selenium.remote.http.Contents.utf8String;
  * <p>
  * Example usage:
  * <p>
- * <code><pre>
- *   Route route = Route.matching(req -> GET == req.getMethod() && req.getUri().endsWith("/example"))
- *     .to(() -> req -> new HttpResponse().setContent(Contents.utf8String("Hello, World!")));
+ * <code>
+ *   Route route = Route.matching(req -&gt; GET == req.getMethod() &amp;&amp; req.getUri().endsWith("/example"))
+ *     .to(() -&gt; req -&gt; new HttpResponse().setContent(Contents.utf8String("Hello, World!")));
  *
  *   try (NetworkInterceptor interceptor = new NetworkInterceptor(driver, route)) {
  *     // Your code here.
  *   }
- * </pre></code>
+ * </code>
  */
 public class NetworkInterceptor implements Closeable {
 
@@ -67,9 +81,7 @@ public class NetworkInterceptor implements Closeable {
     devTools.addListener(Fetch.requestPaused(), this::handleRequest);
 
     devTools.send(Fetch.enable(
-      Optional.of(
-        ImmutableList.of(
-          new RequestPattern(Optional.empty(), Optional.of(ResourceType.Document), Optional.of(REQUEST)))),
+      Optional.empty(),
       Optional.of(false)));
   }
 
@@ -79,7 +91,7 @@ public class NetworkInterceptor implements Closeable {
 
   private void handleRequest(RequestPaused incoming) {
     // Only handle incoming requests. Diligently ignore responses.
-    if (incoming.getResponseStatusCode().isPresent() || incoming.getResponseErrorReason().isPresent()) {
+    if (incoming.getResponseStatusCode() != null || incoming.getResponseErrorReason() != null) {
       return;
     }
 

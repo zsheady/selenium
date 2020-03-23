@@ -1,4 +1,5 @@
-load("//java:maven.bzl", "java_export")
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//java:defs.bzl", "java_export")
 load("//java:version.bzl", "SE_VERSION")
 
 java_export(
@@ -15,7 +16,7 @@ java_export(
         ":page-factory",
         "//java/client/src/org/openqa/selenium/support/devtools",
         "//java/client/src/org/openqa/selenium/support/events",
-        "//java/client/src/org/openqa/selenium/support/friendly",
+        "//java/client/src/org/openqa/selenium/support/locators",
         "//java/client/src/org/openqa/selenium/support/ui:clock",
         "//java/client/src/org/openqa/selenium/support/ui:components",
         "//java/client/src/org/openqa/selenium/support/ui:elements",
@@ -52,6 +53,6 @@ java_library(
         "//java/client/src/org/openqa/selenium:core",
         "//java/client/src/org/openqa/selenium/support/ui:clock",
         "//java/client/src/org/openqa/selenium/support/ui:components",
-        "//third_party/java/guava",
+        artifact("com.google.guava:guava"),
     ],
 )

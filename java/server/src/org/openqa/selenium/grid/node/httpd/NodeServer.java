@@ -20,6 +20,8 @@ package org.openqa.selenium.grid.node.httpd;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.ParameterException;
 import com.google.auto.service.AutoService;
+import io.opentelemetry.trace.Tracer;
+import org.openqa.selenium.BuildInfo;
 import org.openqa.selenium.cli.CliCommand;
 import org.openqa.selenium.concurrent.Regularly;
 import org.openqa.selenium.events.EventBus;
@@ -35,16 +37,15 @@ import org.openqa.selenium.grid.docker.DockerOptions;
 import org.openqa.selenium.grid.log.LoggingOptions;
 import org.openqa.selenium.grid.node.config.NodeOptions;
 import org.openqa.selenium.grid.node.local.LocalNode;
-import org.openqa.selenium.grid.server.BaseServer;
 import org.openqa.selenium.grid.server.BaseServerFlags;
 import org.openqa.selenium.grid.server.BaseServerOptions;
-import org.openqa.selenium.grid.server.EventBusConfig;
 import org.openqa.selenium.grid.server.EventBusFlags;
+import org.openqa.selenium.grid.server.EventBusOptions;
 import org.openqa.selenium.grid.server.HelpFlags;
+import org.openqa.selenium.grid.server.NetworkOptions;
 import org.openqa.selenium.grid.server.Server;
+import org.openqa.selenium.netty.server.NettyServer;
 import org.openqa.selenium.remote.http.HttpClient;
-import org.openqa.selenium.remote.tracing.DistributedTracer;
-import org.openqa.selenium.remote.tracing.GlobalDistributedTracer;
 
 import java.time.Duration;
 import java.util.logging.Logger;
@@ -107,31 +108,39 @@ public class NodeServer implements CliCommand {
 
       LoggingOptions loggingOptions = new LoggingOptions(config);
       loggingOptions.configureLogging();
+      Tracer tracer = loggingOptions.getTracer();
 
-      DistributedTracer tracer = loggingOptions.getTracer();
-      GlobalDistributedTracer.setInstance(tracer);
-
-      EventBusConfig events = new EventBusConfig(config);
+      EventBusOptions events = new EventBusOptions(config);
       EventBus bus = events.getEventBus();
 
-      HttpClient.Factory clientFactory = HttpClient.Factory.createDefault();
+      NetworkOptions networkOptions = new NetworkOptions(config);
+      HttpClient.Factory clientFactory = networkOptions.getHttpClientFactory(tracer);
 
       BaseServerOptions serverOptions = new BaseServerOptions(config);
+
+      LOG.info("Reporting self as: " + serverOptions.getExternalUri());
 
       LocalNode.Builder builder = LocalNode.builder(
           tracer,
           bus,
           clientFactory,
-          serverOptions.getExternalUri());
+          serverOptions.getExternalUri(),
+          serverOptions.getRegistrationSecret());
 
-      new NodeOptions(config).configure(clientFactory, builder);
-      new DockerOptions(config).configure(clientFactory, builder);
+      new NodeOptions(config).configure(tracer, clientFactory, builder);
+      new DockerOptions(config).configure(tracer, clientFactory, builder);
 
       LocalNode node = builder.build();
 
-      Server<?> server = new BaseServer<>(serverOptions);
-      server.setHandler(node);
+      Server<?> server = new NettyServer(serverOptions, node);
       server.start();
+
+      BuildInfo info = new BuildInfo();
+      LOG.info(String.format(
+        "Started Selenium node %s (revision %s): %s",
+        info.getReleaseLabel(),
+        info.getBuildRevision(),
+        server.getUrl()));
 
       Regularly regularly = new Regularly("Register Node with Distributor");
 
@@ -139,7 +148,7 @@ public class NodeServer implements CliCommand {
           () -> {
             HealthCheck.Result check = node.getHealthCheck().check();
             if (!check.isAlive()) {
-              LOG.info("Node is not alive: " + check.getMessage());
+              LOG.severe("Node is not alive: " + check.getMessage());
               // Throw an exception to force another check sooner.
               throw new UnsupportedOperationException("Node cannot be registered");
             }

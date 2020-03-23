@@ -1,3 +1,5 @@
+load("//java/private:module.bzl", "JavaModuleInfo")
+
 MavenInfo = provider(
     fields = {
         "coordinates": "Maven coordinates of the library we're building (optional)",
@@ -21,20 +23,15 @@ def _has_maven_deps_impl(target, ctx):
     rt_deps = getattr(ctx.rule.attr, "runtime_deps", [])
     all_deps = deps + exports + rt_deps
 
-    coordinates = []
-    for tag in tags:
-        if tag == "maven:compile_only":
-            return MavenInfo(
-                coordinates = None,
-                maven_deps = depset(),
-                artifact_jars = depset(),
-                source_jars = depset(),
-                transitive_maven_deps = depset(),
-            )
-        if tag.startswith(MAVEN_PREFIX):
-            coordinates.append(tag[len(MAVEN_PREFIX):])
-    if len(coordinates) > 1:
-        fail("Zero or one set of coordinates should be defined: %s" % coordinates)
+    if "maven:compile_only" in tags:
+        return MavenInfo(
+            coordinates = None,
+            maven_deps = depset(),
+            artifact_jars = depset(),
+            source_jars = depset(),
+            transitive_maven_deps = depset(),
+            transitive_runtime_jars = depset(),
+        )
 
     # Find all the deps that have coordinates
     all_infos = [dep[MavenInfo] for dep in all_deps if MavenInfo in dep]
@@ -45,24 +42,34 @@ def _has_maven_deps_impl(target, ctx):
     # it's enough to set set the transitive deps to just be the rule for
     # anything that depends upon it. Otherwise, gather them up, and carry on
     # as if nothing really mattered.
-
-    if len(coordinates) > 0:
-        transitive_maven_deps = depset(coordinates)
+    coordinate = read_coordinates(tags)
+    if coordinate:
+        transitive_maven_deps = depset([coordinate])
     else:
-        transitive_maven_deps = depset(coordinates, transitive = [info.transitive_maven_deps for info in all_infos])
+        transitive_maven_deps = depset(transitive = [info.transitive_maven_deps for info in all_infos])
     artifact_jars = depset(java_info.runtime_output_jars, transitive = [info.artifact_jars for info in all_infos if not info.coordinates])
     source_jars = depset(java_info.source_jars, transitive = [info.source_jars for info in all_infos if not info.coordinates])
 
     infos = []
-    coordinate = coordinates[0] if len(coordinates) > 0 else None
 
-    info = MavenInfo(
-        coordinates = coordinate,
-        maven_deps = maven_deps,
-        artifact_jars = artifact_jars,
-        source_jars = source_jars,
-        transitive_maven_deps = transitive_maven_deps,
-    )
+    if JavaModuleInfo in target:
+        info = MavenInfo(
+            coordinates = coordinate,
+            maven_deps = maven_deps,
+            artifact_jars = depset(target[JavaInfo].runtime_output_jars),
+            source_jars = depset(target[JavaInfo].source_jars),
+            transitive_maven_deps = transitive_maven_deps,
+            transitive_runtime_jars = depset(target[JavaInfo].transitive_runtime_jars.to_list(), transitive = [info.transitive_runtime_jars for info in all_infos])
+        )
+    else:
+        info = MavenInfo(
+            coordinates = coordinate,
+            maven_deps = maven_deps,
+            artifact_jars = artifact_jars,
+            source_jars = source_jars,
+            transitive_maven_deps = transitive_maven_deps,
+            transitive_runtime_jars = depset(target[JavaInfo].transitive_runtime_jars.to_list(), transitive = [info.transitive_runtime_jars for info in all_infos])
+        )
     infos.append(info)
 
     return infos
@@ -78,7 +85,6 @@ has_maven_deps = aspect(
 
 def combine_jars(ctx, singlejar, inputs, output):
     args = ctx.actions.args()
-    args.add_all(["--compression", "--normalize"])
     args.add("--output", output)
     args.add_all(inputs, before_each = "--sources")
 
@@ -92,16 +98,30 @@ def combine_jars(ctx, singlejar, inputs, output):
 
 def explode_coordinates(coords):
     """Takes a maven coordinate and explodes it into a tuple of
-    (groupId, artifactId, version, type)
+    (groupId, artifactId, version, type, classifier)
     """
     if not coords:
         return None
 
     parts = coords.split(":")
     if len(parts) == 3:
-        return (parts[0], parts[1], parts[2], "jar")
+        return (parts[0], parts[1], parts[2], "jar", "jar")
     if len(parts) == 4:
         # Assume a buildr coordinate: groupId:artifactId:type:version
-        return (parts[0], parts[1], parts[3], parts[2])
+        return (parts[0], parts[1], parts[3], parts[2], "jar")
+    if len(parts) == 5:
+        # Assume groupId:artifactId:type:classifier:version
+        return (parts[0], parts[1], parts[4], parts[2], parts[3])
 
-    fail("Unparsed: %s" % coords)
+    fail("Unparsed: %s -> %s" % (coords, parts))
+
+def read_coordinates(tags):
+    coordinates = []
+    for tag in tags:
+        if tag == "maven:compile_only":
+            return []
+        if tag.startswith(MAVEN_PREFIX):
+            coordinates.append(tag[len(MAVEN_PREFIX):])
+    if len(coordinates) > 1:
+        fail("Zero or one set of coordinates should be defined: %s" % coordinates)
+    return coordinates[0] if len(coordinates) else None

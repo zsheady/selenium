@@ -41,6 +41,7 @@ class RemoteConnection(object):
     Communicates with the server using the WebDriver wire protocol:
     https://github.com/SeleniumHQ/selenium/wiki/JsonWireProtocol"""
 
+    browser_name = None
     _timeout = socket._GLOBAL_DEFAULT_TIMEOUT
 
     @classmethod
@@ -201,6 +202,8 @@ class RemoteConnection(object):
                 ('POST', '/session/$sessionId/timeouts/async_script'),
             Command.SET_TIMEOUTS:
                 ('POST', '/session/$sessionId/timeouts'),
+            Command.GET_TIMEOUTS:
+                ('GET', '/session/$sessionId/timeouts'),
             Command.DISMISS_ALERT:
                 ('POST', '/session/$sessionId/dismiss_alert'),
             Command.W3C_DISMISS_ALERT:
@@ -371,8 +374,8 @@ class RemoteConnection(object):
 
             statuscode = resp.status
         else:
-            http = urllib3.PoolManager(timeout=self._timeout)
-            resp = http.request(method, url, body=body, headers=headers)
+            with urllib3.PoolManager(timeout=self._timeout) as http:
+                resp = http.request(method, url, body=body, headers=headers)
 
             statuscode = resp.status
             if not hasattr(resp, 'getheader'):

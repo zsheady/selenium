@@ -17,6 +17,9 @@
 
 package org.openqa.selenium.grid.sessionmap;
 
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.trace.Span;
+import io.opentelemetry.trace.Tracer;
 import org.openqa.selenium.remote.SessionId;
 import org.openqa.selenium.remote.http.HttpHandler;
 import org.openqa.selenium.remote.http.HttpRequest;
@@ -24,19 +27,35 @@ import org.openqa.selenium.remote.http.HttpResponse;
 
 import java.util.Objects;
 
+import static org.openqa.selenium.remote.RemoteTags.SESSION_ID;
+import static org.openqa.selenium.remote.tracing.HttpTags.HTTP_REQUEST;
+import static org.openqa.selenium.remote.tracing.HttpTracing.newSpanAsChildOf;
+
+
 class RemoveFromSession implements HttpHandler {
 
+  private final Tracer tracer;
   private final SessionMap sessions;
-  private SessionId id;
+  private final SessionId id;
 
-  public RemoveFromSession(SessionMap sessions, SessionId id) {
+  public RemoveFromSession(Tracer tracer, SessionMap sessions, SessionId id) {
+    this.tracer = Objects.requireNonNull(tracer);
     this.sessions = Objects.requireNonNull(sessions);
     this.id = Objects.requireNonNull(id);
   }
 
   @Override
   public HttpResponse execute(HttpRequest req) {
-    sessions.remove(id);
-    return new HttpResponse();
+    Span span = newSpanAsChildOf(tracer, req, "sessions.remove_session").startSpan();
+
+    try (Scope scope = tracer.withSpan(span)) {
+      HTTP_REQUEST.accept(span, req);
+      SESSION_ID.accept(span, id);
+
+      sessions.remove(id);
+      return new HttpResponse();
+    } finally {
+      span.end();
+    }
   }
 }

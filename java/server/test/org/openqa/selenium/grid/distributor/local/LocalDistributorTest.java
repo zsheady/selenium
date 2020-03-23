@@ -17,10 +17,8 @@
 
 package org.openqa.selenium.grid.distributor.local;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
-import com.google.common.annotations.VisibleForTesting;
-
+import io.opentelemetry.OpenTelemetry;
+import io.opentelemetry.trace.Tracer;
 import org.junit.Before;
 import org.junit.Test;
 import org.openqa.selenium.Capabilities;
@@ -34,13 +32,11 @@ import org.openqa.selenium.grid.node.Node;
 import org.openqa.selenium.grid.node.local.LocalNode;
 import org.openqa.selenium.grid.sessionmap.local.LocalSessionMap;
 import org.openqa.selenium.grid.testing.TestSessionFactory;
-import org.openqa.selenium.net.PortProber;
 import org.openqa.selenium.remote.SessionId;
 import org.openqa.selenium.remote.http.HttpClient;
 import org.openqa.selenium.remote.http.HttpHandler;
 import org.openqa.selenium.remote.http.HttpRequest;
 import org.openqa.selenium.remote.http.HttpResponse;
-import org.openqa.selenium.remote.tracing.DistributedTracer;
 
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -49,13 +45,17 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 public class LocalDistributorTest {
-  private DistributedTracer tracer;
+
+  private Tracer tracer;
   private EventBus bus;
   private HttpClient.Factory clientFactory;
   private URI uri;
@@ -63,13 +63,13 @@ public class LocalDistributorTest {
 
   @Before
   public void setUp() throws URISyntaxException {
-    tracer = DistributedTracer.builder().build();
+    tracer = OpenTelemetry.getTracerProvider().get("default");
     bus = new GuavaEventBus();
     clientFactory = HttpClient.Factory.createDefault();
 
     Capabilities caps = new ImmutableCapabilities("browserName", "cheese");
     uri = new URI("http://localhost:1234");
-    local = LocalNode.builder(tracer, bus, clientFactory, uri)
+    local = LocalNode.builder(tracer, bus, clientFactory, uri, null)
         .add(caps, new TestSessionFactory((id, c) -> new Handler(c)))
         .maximumConcurrentSessions(2)
         .build();
@@ -77,7 +77,7 @@ public class LocalDistributorTest {
 
   @Test
   public void testAddNodeToDistributor() {
-    Distributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    Distributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     distributor.add(local);
     DistributorStatus status = distributor.getStatus();
 
@@ -93,7 +93,7 @@ public class LocalDistributorTest {
 
   @Test
   public void testRemoveNodeFromDistributor() {
-    Distributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    Distributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     distributor.add(local);
 
     //Check the size
@@ -110,7 +110,7 @@ public class LocalDistributorTest {
 
   @Test
   public void testAddSameNodeTwice() {
-    Distributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    Distributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     distributor.add(local);
     distributor.add(local);
     DistributorStatus status = distributor.getStatus();
@@ -134,7 +134,7 @@ public class LocalDistributorTest {
     );
 
     //We're not doing anything with this distributor, it's just here so we can call the method we're testing
-    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
 
     //When you prioritize for Edge, you should only have 1 possibility
     Stream<Host> edgeHosts = hosts.stream().filter(host -> host.hasCapacity(new ImmutableCapabilities("browserName", "edge")));
@@ -158,7 +158,7 @@ public class LocalDistributorTest {
   public void testAllBucketsSameSize() {
     Map<String, Set<Host>> hostBuckets = buildBuckets(5, 5, 5, 5, 5, 5, 5, 5, 5, 5);
 
-    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     assertThat(distributor.allBucketsSameSize(hostBuckets)).isTrue();
   }
 
@@ -166,7 +166,7 @@ public class LocalDistributorTest {
   public void testAllBucketsNotSameSize() {
     Map<String, Set<Host>> hostBuckets = buildBuckets(3, 5, 8 );
 
-    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     assertThat(distributor.allBucketsSameSize(hostBuckets)).isFalse();
   }
 
@@ -174,7 +174,7 @@ public class LocalDistributorTest {
   public void testOneBucketStillConsideredSameSize() {
     Map<String, Set<Host>> hostBuckets = buildBuckets(3 );
 
-    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     assertThat(distributor.allBucketsSameSize(hostBuckets)).isTrue();
   }
 
@@ -183,7 +183,7 @@ public class LocalDistributorTest {
     //Make sure the numbers don't just average out to the same size
     Map<String, Set<Host>> hostBuckets = buildBuckets(4, 5, 6 );
 
-    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus));
+    LocalDistributor distributor = new LocalDistributor(tracer, bus, clientFactory, new LocalSessionMap(tracer, bus), null);
     assertThat(distributor.allBucketsSameSize(hostBuckets)).isFalse();
   }
 
@@ -206,7 +206,7 @@ public class LocalDistributorTest {
   //Create a single host with the given browserName
   private Host createHost(String...browsers) {
     URI uri = createUri();
-    LocalNode.Builder nodeBuilder = LocalNode.builder(tracer, bus, clientFactory, uri);
+    LocalNode.Builder nodeBuilder = LocalNode.builder(tracer, bus, clientFactory, uri, null);
     nodeBuilder.maximumConcurrentSessions(browsers.length);
 
     Arrays.stream(browsers).forEach(browser -> {
@@ -220,7 +220,7 @@ public class LocalDistributorTest {
 
   private URI createUri() {
     try {
-      return new URI("http://localhost:" + PortProber.findFreePort());
+      return new URI("http://localhost:" + new Random().nextInt());
     } catch (URISyntaxException e) {
       throw new RuntimeException(e);
     }

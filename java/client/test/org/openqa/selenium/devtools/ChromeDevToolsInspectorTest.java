@@ -16,19 +16,19 @@
 // under the License.
 package org.openqa.selenium.devtools;
 
-import static org.openqa.selenium.devtools.inspector.Inspector.detached;
-import static org.openqa.selenium.devtools.inspector.Inspector.disable;
-import static org.openqa.selenium.devtools.inspector.Inspector.enable;
-import static org.openqa.selenium.devtools.target.Target.attachToTarget;
-
 import org.junit.Assert;
 import org.junit.Test;
 import org.openqa.selenium.devtools.target.Target;
-import org.openqa.selenium.devtools.target.model.SessionId;
+import org.openqa.selenium.devtools.target.model.SessionID;
 import org.openqa.selenium.devtools.target.model.TargetInfo;
 
 import java.util.List;
 import java.util.Optional;
+
+import static org.openqa.selenium.devtools.inspector.Inspector.detached;
+import static org.openqa.selenium.devtools.inspector.Inspector.disable;
+import static org.openqa.selenium.devtools.inspector.Inspector.enable;
+import static org.openqa.selenium.devtools.target.Target.attachToTarget;
 
 public class ChromeDevToolsInspectorTest extends DevToolsTestBase {
   @Test
@@ -36,10 +36,9 @@ public class ChromeDevToolsInspectorTest extends DevToolsTestBase {
     devTools.addListener(detached(), Assert::assertNotNull);
     devTools.send(enable());
     List<TargetInfo> targetInfos = devTools.send(Target.getTargets());
-    targetInfos.stream()
-        .forEach(
+    targetInfos.forEach(
             targetInfo -> {
-              SessionId sessionId =
+              SessionID sessionId =
                   devTools.send(attachToTarget(targetInfo.getTargetId(), Optional.of(false)));
               devTools.send(
                   Target.sendMessageToTarget(

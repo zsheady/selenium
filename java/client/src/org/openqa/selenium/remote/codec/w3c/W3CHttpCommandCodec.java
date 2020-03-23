@@ -53,6 +53,7 @@ import static org.openqa.selenium.remote.DriverCommand.GET_SESSION_STORAGE_SIZE;
 import static org.openqa.selenium.remote.DriverCommand.GET_WINDOW_HANDLES;
 import static org.openqa.selenium.remote.DriverCommand.IS_ELEMENT_DISPLAYED;
 import static org.openqa.selenium.remote.DriverCommand.MAXIMIZE_CURRENT_WINDOW;
+import static org.openqa.selenium.remote.DriverCommand.MINIMIZE_CURRENT_WINDOW;
 import static org.openqa.selenium.remote.DriverCommand.MOUSE_DOWN;
 import static org.openqa.selenium.remote.DriverCommand.MOUSE_UP;
 import static org.openqa.selenium.remote.DriverCommand.MOVE_TO;
@@ -131,6 +132,7 @@ public class W3CHttpCommandCodec extends AbstractHttpCommandCodec {
     alias(GET_SESSION_STORAGE_SIZE, EXECUTE_SCRIPT);
 
     defineCommand(MAXIMIZE_CURRENT_WINDOW, post("/session/:sessionId/window/maximize"));
+    defineCommand(MINIMIZE_CURRENT_WINDOW, post("/session/:sessionId/window/minimize"));
     defineCommand(GET_CURRENT_WINDOW_SIZE, get("/session/:sessionId/window/rect"));
     defineCommand(SET_CURRENT_WINDOW_SIZE, post("/session/:sessionId/window/rect"));
     alias(GET_CURRENT_WINDOW_POSITION, GET_CURRENT_WINDOW_SIZE);
@@ -163,22 +165,28 @@ public class W3CHttpCommandCodec extends AbstractHttpCommandCodec {
   protected Map<String, ?> amendParameters(String name, Map<String, ?> parameters) {
     switch (name) {
       case CLICK:
+        int button = parameters.containsKey("button") ?
+            ((Number) parameters.get("button")).intValue() :
+            PointerInput.MouseButton.LEFT.asArg();
         return ImmutableMap.<String, Object>builder()
             .put("actions", ImmutableList.of(
                 new Sequence(mouse, 0)
-                    .addAction(mouse.createPointerDown(PointerInput.MouseButton.LEFT.asArg()))
-                    .addAction(mouse.createPointerUp(PointerInput.MouseButton.LEFT.asArg()))
+                    .addAction(mouse.createPointerDown(button))
+                    .addAction(mouse.createPointerUp(button))
                     .toJson()))
             .build();
 
       case DOUBLE_CLICK:
+        button = parameters.containsKey("button") ?
+            ((Number) parameters.get("button")).intValue() :
+            PointerInput.MouseButton.LEFT.asArg();
         return ImmutableMap.<String, Object>builder()
             .put("actions", ImmutableList.of(
                 new Sequence(mouse, 0)
-                    .addAction(mouse.createPointerDown(PointerInput.MouseButton.LEFT.asArg()))
-                    .addAction(mouse.createPointerUp(PointerInput.MouseButton.LEFT.asArg()))
-                    .addAction(mouse.createPointerDown(PointerInput.MouseButton.LEFT.asArg()))
-                    .addAction(mouse.createPointerUp(PointerInput.MouseButton.LEFT.asArg()))
+                    .addAction(mouse.createPointerDown(button))
+                    .addAction(mouse.createPointerUp(button))
+                    .addAction(mouse.createPointerDown(button))
+                    .addAction(mouse.createPointerUp(button))
                     .toJson()))
             .build();
 
@@ -291,13 +299,19 @@ public class W3CHttpCommandCodec extends AbstractHttpCommandCodec {
         return executeAtom("isDisplayed.js", asElement(parameters.get("id")));
 
       case MOUSE_DOWN:
-        Interaction mouseDown = mouse.createPointerDown(PointerInput.MouseButton.LEFT.asArg());
+        button = parameters.containsKey("button") ?
+            ((Number) parameters.get("button")).intValue() :
+            PointerInput.MouseButton.LEFT.asArg();
+        Interaction mouseDown = mouse.createPointerDown(button);
         return ImmutableMap.<String, Object>builder()
             .put("actions", ImmutableList.of(new Sequence(mouse, 0).addAction(mouseDown).toJson()))
             .build();
 
       case MOUSE_UP:
-        Interaction mouseUp = mouse.createPointerUp(PointerInput.MouseButton.LEFT.asArg());
+        button = parameters.containsKey("button") ?
+            ((Number) parameters.get("button")).intValue() :
+            PointerInput.MouseButton.LEFT.asArg();
+        Interaction mouseUp = mouse.createPointerUp(button);
         return ImmutableMap.<String, Object>builder()
             .put("actions", ImmutableList.of(new Sequence(mouse, 0).addAction(mouseUp).toJson()))
             .build();

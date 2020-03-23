@@ -23,12 +23,14 @@ import com.google.common.collect.ImmutableMap;
 import org.openqa.selenium.Capabilities;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.edge.EdgeDriverService;
+import org.openqa.selenium.edge.EdgeOptions;
 import org.openqa.selenium.remote.BrowserType;
 import org.openqa.selenium.remote.service.DriverService;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -37,7 +39,14 @@ public class EdgeHtmlDriverService extends EdgeDriverService {
   public EdgeHtmlDriverService(File executable, int port,
                                List<String> args,
                                Map<String, String> environment) throws IOException {
-    super(executable, port, args, environment);
+    super(executable, port, DEFAULT_TIMEOUT, args, environment);
+  }
+
+  public EdgeHtmlDriverService(File executable, int port,
+                               Duration timeout,
+                               List<String> args,
+                               Map<String, String> environment) throws IOException {
+    super(executable, port, timeout, args, environment);
   }
 
   /**
@@ -68,6 +77,11 @@ public class EdgeHtmlDriverService extends EdgeDriverService {
       int score = 0;
 
       if (BrowserType.EDGE.equals(capabilities.getBrowserName())) {
+        score++;
+      }
+
+      if (capabilities.getCapability(EdgeOptions.USE_CHROMIUM) != null &&
+          !Boolean.parseBoolean(capabilities.getCapability(EdgeOptions.USE_CHROMIUM).toString())) {
         score++;
       }
 
@@ -106,11 +120,12 @@ public class EdgeHtmlDriverService extends EdgeDriverService {
 
     @Override
     protected EdgeHtmlDriverService createDriverService(File exe, int port,
+                                                        Duration timeout,
                                                         ImmutableList<String> args,
                                                         ImmutableMap<String, String> environment) {
       try {
         EdgeHtmlDriverService
-            service = new EdgeHtmlDriverService(exe, port, args, environment);
+            service = new EdgeHtmlDriverService(exe, port, timeout, args, environment);
 
         if (getLogFile() != null) {
           service.sendOutputTo(new FileOutputStream(getLogFile()));

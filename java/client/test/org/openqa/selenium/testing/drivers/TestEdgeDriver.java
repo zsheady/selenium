@@ -57,21 +57,24 @@ public class TestEdgeDriver extends RemoteWebDriver implements WebStorage, Locat
   private RemoteLocationContext locationContext;
 
   public TestEdgeDriver(Capabilities capabilities) {
-    super(getServiceUrl(), edgeWithCustomCapabilities(capabilities));
+    super(getServiceUrl(capabilities), edgeWithCustomCapabilities(capabilities));
     webStorage = new RemoteWebStorage(getExecuteMethod());
     locationContext = new RemoteLocationContext(getExecuteMethod());
   }
 
-  private static URL getServiceUrl() {
+  private static URL getServiceUrl(Capabilities capabilities) {
     try {
       if (service == null) {
         Path logFile = Files.createTempFile("edgedriver", ".log");
-        boolean isLegacy = System.getProperty("webdriver.edge.edgehtml") == null || Boolean.getBoolean("webdriver.edge.edgehtml");
+        boolean isLegacy = System.getProperty("webdriver.edge.edgehtml") == null ||
+                           Boolean.getBoolean("webdriver.edge.edgehtml") ||
+                           capabilities.getCapability(EdgeOptions.USE_CHROMIUM) == null ||
+                           Boolean.parseBoolean(capabilities.getCapability(EdgeOptions.USE_CHROMIUM).toString());
 
         EdgeDriverService.Builder<?, ?> builder =
             StreamSupport.stream(ServiceLoader.load(DriverService.Builder.class).spliterator(), false)
                 .filter(b -> b instanceof EdgeDriverService.Builder)
-                .map(b -> (EdgeDriverService.Builder) b)
+                .map(b -> (EdgeDriverService.Builder<?, ?>) b)
                 .filter(b -> b.isLegacy() == isLegacy)
                 .findFirst().orElseThrow(WebDriverException::new);
 

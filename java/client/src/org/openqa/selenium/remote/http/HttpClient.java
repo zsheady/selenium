@@ -36,15 +36,25 @@ public interface HttpClient extends HttpHandler {
      * {@link HttpClient} should be used.
      */
     static Factory createDefault() {
-      String defaultFactory = System.getProperty("webdriver.http.factory", "okhttp");
+      String defaultFactory = System.getProperty("webdriver.http.factory", "netty");
       switch (defaultFactory) {
+        case "netty":
+          try {
+            Class<? extends Factory> clazz =
+                Class.forName("org.openqa.selenium.remote.http.netty.NettyClient$Factory")
+                    .asSubclass(Factory.class);
+            return clazz.getConstructor().newInstance();
+          } catch (ReflectiveOperationException e) {
+            throw new UnsupportedOperationException("Unable to create HTTP client factory", e);
+          }
+
         case "okhttp":
         default:
           try {
             Class<? extends Factory> clazz =
                 Class.forName("org.openqa.selenium.remote.http.okhttp.OkHttpClient$Factory")
                     .asSubclass(Factory.class);
-            return clazz.newInstance();
+            return clazz.getConstructor().newInstance();
           } catch (ReflectiveOperationException e) {
             throw new UnsupportedOperationException("Unable to create HTTP client factory", e);
           }

@@ -18,6 +18,9 @@
 package org.openqa.selenium.grid.sessionmap;
 
 import com.google.common.collect.ImmutableMap;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.trace.Span;
+import io.opentelemetry.trace.Tracer;
 import org.openqa.selenium.grid.data.Session;
 import org.openqa.selenium.json.Json;
 import org.openqa.selenium.remote.SessionId;
@@ -27,15 +30,21 @@ import org.openqa.selenium.remote.http.HttpResponse;
 
 import java.util.Objects;
 
+import static org.openqa.selenium.remote.RemoteTags.CAPABILITIES;
+import static org.openqa.selenium.remote.RemoteTags.SESSION_ID;
 import static org.openqa.selenium.remote.http.Contents.utf8String;
+import static org.openqa.selenium.remote.tracing.HttpTags.HTTP_REQUEST;
+import static org.openqa.selenium.remote.tracing.HttpTracing.newSpanAsChildOf;
 
 class GetFromSessionMap implements HttpHandler {
 
+  private final Tracer tracer;
   private final Json json;
   private final SessionMap sessions;
-  private SessionId id;
+  private final SessionId id;
 
-  public GetFromSessionMap(Json json, SessionMap sessions, SessionId id) {
+  public GetFromSessionMap(Tracer tracer, Json json, SessionMap sessions, SessionId id) {
+    this.tracer = Objects.requireNonNull(tracer);
     this.json = Objects.requireNonNull(json);
     this.sessions = Objects.requireNonNull(sessions);
     this.id = Objects.requireNonNull(id);
@@ -43,8 +52,20 @@ class GetFromSessionMap implements HttpHandler {
 
   @Override
   public HttpResponse execute(HttpRequest req) {
-    Session session = sessions.get(id);
+    Span span = newSpanAsChildOf(tracer, req, "sessions.get_session").startSpan();
 
-    return new HttpResponse().setContent(utf8String(json.toJson(ImmutableMap.of("value", session))));
+    try (Scope scope = tracer.withSpan(span)) {
+      HTTP_REQUEST.accept(span, req);
+
+      Session session = sessions.get(id);
+
+      SESSION_ID.accept(span, session.getId());
+      CAPABILITIES.accept(span, session.getCapabilities());
+      span.setAttribute("session.uri", session.getUri().toString());
+
+      return new HttpResponse().setContent(utf8String(json.toJson(ImmutableMap.of("value", session))));
+    } finally {
+      span.end();
+    }
   }
 }

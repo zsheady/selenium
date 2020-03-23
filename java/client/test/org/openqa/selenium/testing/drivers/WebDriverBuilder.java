@@ -75,7 +75,8 @@ public class WebDriverBuilder implements Supplier<WebDriver> {
         }
         return options;
       })
-      .put(Browser.CHROMIUMEDGE, EdgeOptions::new)
+      .put(Browser.CHROMIUMEDGE, () -> new EdgeOptions()
+          .setChromium(true))
       .put(Browser.EDGE, EdgeOptions::new)
       .put(Browser.HTMLUNIT, () -> new DesiredCapabilities(BrowserType.HTMLUNIT, "", Platform.ANY))
       .put(Browser.OPERABLINK, OperaOptions::new)
@@ -113,7 +114,6 @@ public class WebDriverBuilder implements Supplier<WebDriver> {
     WebDriver driver =
         Stream.of(
             new ExternalDriverSupplier(desiredCaps),
-            new SauceBackedDriverSupplier(desiredCaps),
             new GridSupplier(desiredCaps),
             new RemoteSupplier(desiredCaps),
             new TestInternetExplorerSupplier(desiredCaps),

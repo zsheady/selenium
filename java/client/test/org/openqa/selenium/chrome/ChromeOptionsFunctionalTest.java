@@ -20,7 +20,6 @@ package org.openqa.selenium.chrome;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.openqa.selenium.remote.CapabilityType.ACCEPT_INSECURE_CERTS;
 import static org.openqa.selenium.support.ui.ExpectedConditions.titleIs;
-import static org.openqa.selenium.testing.drivers.Browser.CHROME;
 
 import org.junit.After;
 import org.junit.Test;
@@ -30,11 +29,10 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.openqa.selenium.build.InProject;
 import org.openqa.selenium.testing.JUnit4TestBase;
 import org.openqa.selenium.testing.NeedsLocalEnvironment;
-import org.openqa.selenium.testing.NotYetImplemented;
-import org.openqa.selenium.testing.drivers.Browser;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.time.Duration;
 import java.util.Base64;
 
 public class ChromeOptionsFunctionalTest extends JUnit4TestBase {
@@ -92,10 +90,10 @@ public class ChromeOptionsFunctionalTest extends JUnit4TestBase {
     driver.get(pages.clicksPage);
 
     driver.findElement(By.id("normal")).click();
-    new WebDriverWait(driver, 10).until(titleIs("XHTML Test Page"));
+    new WebDriverWait(driver, Duration.ofSeconds(10)).until(titleIs("XHTML Test Page"));
 
     driver.findElement(By.tagName("body")).sendKeys(Keys.BACK_SPACE);
-    new WebDriverWait(driver, 10).until(titleIs("clicks"));
+    new WebDriverWait(driver, Duration.ofSeconds(10)).until(titleIs("clicks"));
   }
 
   @NeedsLocalEnvironment
@@ -109,10 +107,10 @@ public class ChromeOptionsFunctionalTest extends JUnit4TestBase {
     driver.get(pages.clicksPage);
 
     driver.findElement(By.id("normal")).click();
-    new WebDriverWait(driver, 10).until(titleIs("XHTML Test Page"));
+    new WebDriverWait(driver, Duration.ofSeconds(10)).until(titleIs("XHTML Test Page"));
 
     driver.findElement(By.tagName("body")).sendKeys(Keys.BACK_SPACE);
-    new WebDriverWait(driver, 10).until(titleIs("clicks"));
+    new WebDriverWait(driver, Duration.ofSeconds(10)).until(titleIs("clicks"));
   }
 
 }
